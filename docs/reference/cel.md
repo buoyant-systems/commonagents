@@ -72,7 +72,7 @@ context.user.email != "" ? context.user.email : "unknown"
 The `now` variable is a UTC ISO 8601 timestamp string available in all middleware and CEL tool expressions:
 
 ```cel
-now   # e.g. "2025-05-20T03:45:00Z"
+now   # e.g. "2026-05-20T03:45:00Z"
 ```
 
 ## Async Macros
