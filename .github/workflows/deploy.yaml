@@ -1,0 +1,39 @@
+name: Deploy Common Agents Site
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build site
+        run: npm run build
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: '${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}'
+          service_account: '${{ vars.GCP_SERVICE_ACCOUNT }}'
+
+      - name: Deploy to GCS
+        run: |
+          gcloud storage rsync build gs://${{ vars.GCP_COMMONAGENTS_BUCKET }}/ --recursive --delete-unmatched-destination-objects
+          gcloud storage objects update "gs://${{ vars.GCP_COMMONAGENTS_BUCKET }}/**" --cache-control="public, max-age=60, s-maxage=7200"
