@@ -15,6 +15,7 @@ const sidebars: SidebarsConfig = {
         'resources/tool-runtimes',
         'resources/bundle',
         'resources/schedule',
+        'resources/trigger',
       ],
     },
     {
@@ -25,6 +26,7 @@ const sidebars: SidebarsConfig = {
         'capabilities/task-context',
         'capabilities/middleware',
         'capabilities/bindings',
+        'capabilities/events',
       ],
     },
     'glossary',

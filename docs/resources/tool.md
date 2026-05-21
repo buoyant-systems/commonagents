@@ -7,12 +7,12 @@ description: Full specification of the Tool manifest format for the Common Agent
 
 # Tool
 
-A tool declares one or more callable capabilities and the execution backend that powers each one — it is the mechanism through which an agent interacts with external systems.
+A tool declares one or more executable actions and the execution backend that powers each one — it is the mechanism through which an agent interacts with external systems. A tool may also declare inbound events: signals from external platforms that resume a task when they arrive.
 
 A tool is defined by a YAML file with the following schema:
 
 ```yaml
-kind: "commonagents.info/v1/tool"
+kind: "commonagents.info/v1beta2/tool"
 namespace: str
 name: str
 description: str
@@ -22,7 +22,7 @@ synchronous: bool           # default: false
 settings: JSON_SCHEMA | None
 parameters: JSON_SCHEMA | None
 
-capabilities:
+actions:
   - name: str
     description: str
     parameters: JSON_SCHEMA | None
@@ -36,6 +36,16 @@ capabilities:
       kubernetes_job: object | None
     filesystem: str | None  # shorthand for well-known filesystem actions
 
+events:
+  - name: str
+    description: str | None
+    message: str
+    parameters: JSON_SCHEMA | None
+    receive:
+      webhook: object | None
+      subscription: object | None
+      poll: object | None
+
 # Optional top-level shared runtime config blocks
 stateless_http: object | None
 stateful_session: object | None
@@ -48,14 +58,14 @@ mcp: object | None
 
 ### Identity
 
-1. **`kind`** — Identifies this manifest as a Tool. A manifest with a different `kind` value is not defined by this specification.
+1. **`kind`** — Identifies this manifest as a Tool. Must be `"commonagents.info/v1beta2/tool"`.
 2. **`namespace`** — Identifies the namespace this tool belongs to.
 3. **`name`** — Identifies the tool uniquely within its namespace.
 4. **`description`** — A human-readable description of the tool's purpose.
 
 ### Execution Mode
 
-5. **`synchronous`** — Controls capability execution mode. When `true`, capabilities execute synchronously. When `false` or absent (default), the runtime may execute capabilities asynchronously and yield the task while waiting for results.
+5. **`synchronous`** — Controls action execution mode. When `true`, actions execute synchronously. When `false` or absent (default), the runtime may execute actions asynchronously and yield the task while waiting for results.
 
 ### Settings
 
@@ -63,26 +73,41 @@ mcp: object | None
 
 ### Parameters
 
-7. **`parameters`** — When present, defines parameters shared across all capabilities. Parameters are the normal mechanism for the LLM to pass task-specific information into a tool at invocation time. Parameter values are resolved at invocation time and made available via `{parameters.<key>}` interpolation in execution spec fields:
+7. **`parameters`** — When present, defines parameters shared across all actions **and** all events. All root parameters are available as `parameters.*` inside event `receive.filter` CEL expressions — the tool author may reference any of them when writing routing conditions.
+
    - A property **without** a `default` is required — the caller must supply a value.
    - A property **with** a `default` is optional — the default is used when the value is absent.
-   - `allow_from_llm: false` — the runtime does not expose this parameter to the LLM; it must be supplied by a binding.
+   - `require_binding: true` — the runtime does not expose this parameter to the LLM; it must be supplied by a binding. Parameters used in event `receive.filter` expressions are good candidates for `require_binding: true`, because a binding-enforced value is always reliable as a routing condition.
 
    See [Parameter Pipeline](../reference/parameters) for how values flow from settings → bindings → LLM → interpolation.
 
-### Capabilities
+### Actions
 
-8. **`capabilities`** — Defines the capabilities this tool exposes. Each capability has:
+8. **`actions`** — Defines the outbound actions this tool exposes. Each action has:
    - A `name` and `description` identifying it to the LLM.
    - An optional `parameters` schema (same semantics as the tool-level parameters).
    - Exactly one runtime backend declared in the `execute` block.
    - Optionally, a `filesystem` shorthand string in place of an `execute` block, deriving from a well-known filesystem action.
 
-   The runtime presents individual capabilities — not the tool itself — to the LLM as callable functions.
+   The runtime presents individual actions — not the tool itself — to the LLM as callable functions.
+
+### Events
+
+9. **`events`** — When present, defines inbound events this tool can receive. Events are the inbound counterpart to actions.
+
+   When an agent declares a tool as a capability, all of the tool's events are automatically subscribed.
+
+   Each event has:
+
+   - **`name`** — unique identifier within the tool.
+   - **`description`** — optional; shown in the UI but **not surfaced to the LLM**.
+   - **`message`** — string template using `{event.payload.*}` interpolation from the raw event payload. Produces the input injected into the task when this event arrives.
+   - **`parameters`** — JSON Schema defining additional parameters specific to this event's `receive.filter`. These are populated by agent bindings. They share the same allow list namespace as root and per-action parameters: if a per-event parameter shares a name with a per-action parameter, LLM action calls that resolve that name also populate the per-event parameter's allow list entry.
+   - **`receive`** — the inbound delivery mechanism. Exactly one sub-type key is present. The sub-type's optional `filter` CEL field references `parameters.*` resolved against the tool-wide action allow list. See [Tool Runtimes](tool-runtimes#receive-runtimes) and [Events](../capabilities/events).
 
 ### Runtime Backends
 
-Each capability specifies its execution backend via the `execute` block. Exactly one backend key is present per capability.
+Each action specifies its execution backend via the `execute` block. Exactly one backend key is present per action.
 
 The following interpolation roots are available in **all** execution spec string fields (URLs, headers, body values, etc.) unless noted otherwise:
 
@@ -143,12 +168,14 @@ These backends derive their execution spec from an external source. Interpolatio
 
 ### Top-Level Runtime Blocks
 
-When top-level runtime configuration blocks are present (e.g. `stateless_http`, `filesystem`, `mcp`), they serve as shared configuration that individual capability `execute` blocks inherit. The same interpolation roots apply.
+When top-level runtime configuration blocks are present (e.g. `stateless_http`, `filesystem`, `mcp`), they serve as shared configuration that individual action `execute` blocks inherit. The same interpolation roots apply.
 
 ## Example
 
+### Tool with Actions Only
+
 ```yaml
-kind: "commonagents.info/v1/tool"
+kind: "commonagents.info/v1beta2/tool"
 namespace: "engineering"
 name: "github-file"
 description: "Reads and writes files in a GitHub repository."
@@ -174,7 +201,7 @@ parameters:
       description: "The branch to read from or write to."
       default: "main"
 
-capabilities:
+actions:
   - name: read_file
     description: "Reads the contents of a file."
     execute:
@@ -202,4 +229,74 @@ capabilities:
           message: "Update {parameters.path}"
           content: "{parameters.content}"
           branch: "{parameters.branch}"
+```
+
+### Tool with Actions and Events
+
+```yaml
+kind: "commonagents.info/v1beta2/tool"
+namespace: "tools"
+name: "github-pr"
+description: "Creates and manages GitHub Pull Requests."
+
+parameters:
+  properties:
+    owner:
+      type: string
+      require_binding: true
+    repo:
+      type: string
+      require_binding: true
+
+actions:
+  - name: create_pr
+    description: "Opens a new pull request."
+    parameters:
+      properties:
+        title: { type: string }
+        body:  { type: string }
+        head:  { type: string }
+        base:  { type: string }
+    execute:
+      stateless_http:
+        method: POST
+        url: "https://api.github.com/repos/{parameters.owner}/{parameters.repo}/pulls"
+        headers:
+          Authorization: "Bearer {auth.github()}"
+
+  - name: list_prs
+    description: "Lists open pull requests."
+    execute:
+      stateless_http:
+        method: GET
+        url: "https://api.github.com/repos/{parameters.owner}/{parameters.repo}/pulls"
+        headers:
+          Authorization: "Bearer {auth.github()}"
+
+events:
+  - name: comment
+    description: "A comment was posted on a pull request."
+    message: >
+      {event.payload.comment.user.login} commented on
+      PR #{event.payload.issue.number}: {event.payload.comment.body}
+    receive:
+      webhook:
+        filter: >
+          event.payload.action == 'created'
+          && has(event.payload.issue.pull_request)
+          && event.payload.repository.owner.login == parameters.owner
+          && event.payload.repository.name == parameters.repo
+
+  - name: review
+    description: "A review was submitted on a pull request."
+    message: >
+      {event.payload.review.user.login} submitted a
+      {event.payload.review.state} review on PR
+      #{event.payload.pull_request.number}: {event.payload.review.body}
+    receive:
+      webhook:
+        filter: >
+          event.payload.action == 'submitted'
+          && event.payload.repository.owner.login == parameters.owner
+          && event.payload.repository.name == parameters.repo
 ```
