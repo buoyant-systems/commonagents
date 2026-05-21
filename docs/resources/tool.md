@@ -77,7 +77,7 @@ mcp: object | None
 
    - A property **without** a `default` is required — the caller must supply a value.
    - A property **with** a `default` is optional — the default is used when the value is absent.
-   - `require_binding: true` — the runtime does not expose this parameter to the LLM; it must be supplied by a binding. Parameters used in event `receive.filter` expressions are good candidates for `require_binding: true`, because a binding-enforced value is always reliable as a routing condition.
+   - `require_binding: true` — a **validation constraint**: any agent using this tool must supply a binding for this parameter. Without a binding the configuration is invalid and the runtime errors. It is the **binding** (not this flag) that hides the parameter from the LLM and seals its allow list entry. Parameters used in event `receive.filter` expressions are good candidates for `require_binding: true`, because it ensures the binding (and therefore the routing value) is always present.
 
    See [Parameter Pipeline](../reference/parameters) for how values flow from settings → bindings → LLM → interpolation.
 

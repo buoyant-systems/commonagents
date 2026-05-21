@@ -44,25 +44,26 @@ properties:
 
 ### `require_binding: true`
 
-When set to `true`, the runtime MUST:
-- Reject any LLM-generated value for this parameter.
-- Require the value to be provided by an [agent binding](../capabilities/bindings) or a middleware binding.
-- Return an error to the LLM if the parameter is missing and no binding is configured.
+`require_binding: true` is a **tool-side validation constraint**. When set:
+- The API server rejects any agent that references this tool without providing a binding for the parameter.
+- If no binding is configured, the configuration is invalid and the runtime MUST error.
 
-This is the primary mechanism for enforcing that security-critical parameters (user IDs, account numbers, resource identifiers) cannot be influenced by prompt injection.
+Note: it is the **binding** (not this flag) that:
+- Hides the parameter from the LLM-facing schema.
+- Seals the action allow list entry so it cannot be expanded by LLM action calls.
 
-For the action allow list: `require_binding: true` **seals** the allow list for that parameter name — it is fixed to the binding value and cannot be expanded by LLM action calls.
+A binding can exist without `require_binding: true` — the parameter is still hidden and the allow list entry is still sealed. `require_binding: true` only adds the validation guarantee that the binding is not accidentally omitted.
 
-All root tool parameters are available as `parameters.*` inside event `receive.filter` CEL expressions. Parameters with `require_binding: true` are well-suited for use in filters because their values are always binding-enforced — making them reliable and immutable routing conditions.
+Parameters with `require_binding: true` are well-suited for use in event filters: the constraint guarantees a binding is always present, and the binding ensures the value is reliably agent-controlled and the allow list entry is sealed from task start.
 
 ## Parameter Sources
 
 A capability parameter can originate from four sources, in priority order (highest wins):
 
 ```
-1. Agent Bindings      ← highest priority, always wins
+1. Agent Bindings      ← highest priority, always wins; hides parameter from LLM
 2. Middleware Bindings ← overrides capability-level bindings in invoke steps
-3. LLM Generation     ← blocked if require_binding: true
+3. LLM Generation     ← blocked for parameters that have an agent binding
 4. Default Value      ← from the parameter schema's default field
 ```
 
@@ -80,7 +81,8 @@ The allow list is maintained **per-tool, per-task**, keyed by **parameter name**
 - If a parameter's allow list is empty (no action has been called with that name yet), events referencing it are **discarded**.
 
 **Sealing the allow list:**
-- `require_binding: true` on any parameter at any level fixes the allow list to the binding value. The runtime MUST NOT append to it from action calls.
+- A parameter with an agent-defined binding has its allow list entry **sealed** at task start. The runtime MUST NOT append to it from action calls.
+- `require_binding: true` is a validation constraint that ensures a binding is present — it is not itself what seals the entry.
 
 **Per-action / per-event sync:**
 - If a per-action parameter and a per-event parameter share the same name, they are the same allow list entry. This is how tool authors link specific action inputs to specific event filters — through naming.
@@ -134,7 +136,7 @@ parameters:
     # Root: applies to all actions + all events
     repo_id:
       type: string
-      require_binding: true    # sealed to binding value; allow list immutable
+      require_binding: true    # validation constraint: binding MUST be provided
 
 actions:
   - name: create_issue

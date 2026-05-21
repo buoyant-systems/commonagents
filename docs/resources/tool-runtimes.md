@@ -173,7 +173,7 @@ Each receive sub-type accepts an optional `filter` field: a CEL expression that 
 
 - All root and per-action parameter values resolved from LLM action calls are added to the allow list.
 - Per-event parameters are also part of the same namespace — if they share a name with a per-action parameter, they share the allow list entry.
-- `require_binding: true` on any parameter **seals** the allow list for that name: it is fixed to the binding value and cannot grow from action calls.
+- A parameter with an agent-defined binding has its allow list entry **sealed** at task start — fixed to the binding value, it cannot grow from action calls. `require_binding: true` is a validation constraint that ensures a binding is present; it does not itself seal the entry.
 - If a referenced parameter's allow list is empty, the filter fails and the event is **discarded**.
 
 ### `webhook`

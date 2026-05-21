@@ -64,12 +64,12 @@ events:
 
 When the LLM calls `create_pr` with `author: "alice"`, the allow list for `author` becomes `{"alice"}`. The `pr_merged` event is then only routed for PRs by Alice. If the LLM later creates a PR for Bob, the set becomes `{"alice", "bob"}` and events for either are routed.
 
-## `require_binding: true` — Sealing the Allow List
+## Bindings: Sealing the Allow List
 
-When `require_binding: true` is set on any parameter at any level (root, per-action, per-event), the allow list for that parameter name is **fixed** to the binding value at task start:
+When a parameter has an agent binding, the allow list for that parameter name is **sealed** at task start to the resolved binding value:
 
 - The set is **sealed** — the runtime MUST NOT append to it from LLM action calls.
-- The LLM cannot supply a value for this parameter (it is hidden from the LLM).
+- The LLM cannot supply a value for this parameter (it is hidden from the LLM by the binding).
 - Events referencing this parameter in `receive.filter` are routable immediately, scoped to exactly the bound value.
 
 ```yaml
@@ -77,11 +77,11 @@ When `require_binding: true` is set on any parameter at any level (root, per-act
 capabilities:
   github-pr:
     bindings:
-      owner: "buoyant-systems"   # require_binding: true → sealed to this value
-      repo:  "agent-mesh"        # require_binding: true → sealed to this value
+      owner: "buoyant-systems"   # binding → sealed to this value
+      repo:  "agent-mesh"        # binding → sealed to this value
 ```
 
-Without `require_binding: true` but with a binding, the allow list is effectively fixed to the binding value too — because bindings always win in action calls, the LLM can never resolve a different value. The difference is that the LLM still sees the parameter in the schema, and no error is raised if the binding is absent.
+`require_binding: true` on a parameter is a **tool-side validation constraint** that ensures the agent MUST configure a binding. It does not itself seal the allow list or hide the parameter — that is what the binding does. If a parameter has `require_binding: true` but no binding, the configuration is invalid and the runtime errors.
 
 ## Using `include` to Filter Events
 
