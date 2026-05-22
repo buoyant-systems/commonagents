@@ -141,6 +141,67 @@ Events can activate an agent in two ways:
 
 Tool event subscriptions resume **existing tasks**. Triggers act on raw event payloads and bypass the action allow list — they are for creating new tasks from external signals.
 
+## Subscription Lifecycle
+
+Event subscriptions have a defined lifecycle that controls when a task starts and stops receiving events.
+
+### When Subscriptions Are Active
+
+A subscription is created when a task starts and the agent's capabilities include a tool with events. It is removed when any of the following occurs:
+
+- The task reaches a terminal state (error).
+- The task is deleted.
+- The task is interrupted.
+- The subscription's timeout expires.
+
+When a task is interrupted, its subscriptions are removed immediately. However, the subscriptions are **automatically restored** when the task completes its next FSM step (e.g. when it receives new user input and begins processing). This prevents events from piling up during an interrupt, while allowing the task to resume event-driven behaviour naturally once it becomes active again.
+
+### Timeouts
+
+Each event may declare a `timeout` (default subscription duration) and a `max_timeout` (hard cap). The agent may override the default via the capability's `event_timeout` field.
+
+The effective timeout is computed as:
+
+```
+effective = clamp(
+    agent.capabilities[tool].event_timeout  ??  tool.events[name].timeout  ??  ∞,
+    max = tool.events[name].max_timeout  ??  ∞
+)
+```
+
+When the effective timeout is finite, the runtime tracks a `last_activity_at` timestamp per subscription. Activity is defined as **any FSM step** — any state transition within the task worker (input ingestion, LLM generation, capability execution, middleware evaluation, etc.). The timeout clock resets on each step. When `now - last_activity_at > effective_timeout`, the subscription is removed — but the task is not deleted or errored.
+
+A runtime implementation MAY also enforce its own maximum timeout independent of the tool and agent declarations.
+
+```yaml
+# Tool declares defaults and caps
+events:
+  - name: comment
+    timeout: "72h"         # default: 3 days
+    max_timeout: "168h"    # cap: 7 days
+    ...
+
+# Agent overrides
+capabilities:
+  github-pr:
+    event_timeout: "48h"         # effective: 48h (within cap)
+```
+
+### Webhook Signature Verification
+
+The `webhook` receive type supports an optional `secret` field for HMAC signature verification:
+
+```yaml
+receive:
+  webhook:
+    secret: "{settings.github_webhook_secret}"
+    filter: "event.payload.action == 'created'"
+```
+
+When `secret` is present, the runtime validates the inbound webhook's `X-Hub-Signature-256` header against the resolved HMAC secret before evaluating the filter. The secret is resolved via the standard `{settings.*}` interpolation — the same mechanism used for API keys and auth tokens. If absent, no signature verification is performed.
+
+Because different tools may use different secrets, verification happens during event routing at the per-tool level, not at the API ingestion endpoint.
+
 ## Full Example: Autonomous Code Review Agent
 
 ```yaml
@@ -162,6 +223,7 @@ capabilities:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
+    event_timeout: "48h"
     include: [create_pr, comment, review]
     before:
       - assert: "!has(event) || event.payload.comment.user.login != 'agentmesh-bot'"
@@ -172,4 +234,5 @@ guardrails:
       error_message: "Input cannot be empty."
 ```
 
-When this agent calls `create_pr`, the resolved `owner` and `repo` values (fixed by binding) are in the allow list from task start. `comment` and `review` events for `buoyant-systems/agent-mesh` arrive immediately. The `pr_merged` event is excluded by `include`.
+When this agent calls `create_pr`, the resolved `owner` and `repo` values (fixed by binding) are in the allow list from task start. `comment` and `review` events for `buoyant-systems/agent-mesh` arrive immediately. The `pr_merged` event is excluded by `include`. After 48 hours of task inactivity, event subscriptions expire.
+

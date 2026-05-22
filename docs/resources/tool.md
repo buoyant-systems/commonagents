@@ -40,9 +40,13 @@ events:
   - name: str
     description: str | None
     message: str
+    timeout: str | None         # Go duration string — default subscription duration
+    max_timeout: str | None     # Go duration string — hard cap on subscription duration
     parameters: JSON_SCHEMA | None
     receive:
-      webhook: object | None
+      webhook:
+        filter: CEL | None
+        secret: str | None      # {settings.*} expression for HMAC verification
       subscription: object | None
       poll: object | None
 
@@ -102,8 +106,10 @@ mcp: object | None
    - **`name`** — unique identifier within the tool.
    - **`description`** — optional; shown in the UI but **not surfaced to the LLM**.
    - **`message`** — string template using `{event.payload.*}` interpolation from the raw event payload. Produces the input injected into the task when this event arrives.
+   - **`timeout`** — optional Go `time.Duration` string (e.g. `"24h"`, `"168h"`). Defines the default subscription duration for this event — how long a task remains subscribed after its last FSM step. When the timeout expires, the subscription is removed but the task is not deleted or errored. If absent, the event has no default timeout. Agents MAY override this value via the capability's `timeout` field.
+   - **`max_timeout`** — optional Go `time.Duration` string. The hard maximum subscription duration for this event. Agent-specified timeouts are silently clamped to this value. If absent, there is no hard cap. When both `timeout` and `max_timeout` are set, `max_timeout` MUST be ≥ `timeout` — implementations MUST reject tool definitions that violate this. A runtime implementation MAY also enforce its own maximum timeout independent of the tool declaration.
    - **`parameters`** — JSON Schema defining additional parameters specific to this event's `receive.filter`. These are populated by agent bindings. They share the same allow list namespace as root and per-action parameters: if a per-event parameter shares a name with a per-action parameter, LLM action calls that resolve that name also populate the per-event parameter's allow list entry.
-   - **`receive`** — the inbound delivery mechanism. Exactly one sub-type key is present. The sub-type's optional `filter` CEL field references `parameters.*` resolved against the tool-wide action allow list. See [Tool Runtimes](tool-runtimes#receive-runtimes) and [Events](../capabilities/events).
+   - **`receive`** — the inbound delivery mechanism. Exactly one sub-type key is present. The sub-type's optional `filter` CEL field references `parameters.*` resolved against the tool-wide action allow list. The `webhook` sub-type additionally supports an optional `secret` field — a `{settings.*}` expression resolving to an HMAC secret. When present, the runtime validates the inbound webhook signature before evaluating the filter. See [Tool Runtimes](tool-runtimes#receive-runtimes) and [Events](../capabilities/events).
 
 ### Runtime Backends
 
@@ -276,11 +282,14 @@ actions:
 events:
   - name: comment
     description: "A comment was posted on a pull request."
+    timeout: "72h"
+    max_timeout: "168h"
     message: >
       {event.payload.comment.user.login} commented on
       PR #{event.payload.issue.number}: {event.payload.comment.body}
     receive:
       webhook:
+        secret: "{settings.github_webhook_secret}"
         filter: >
           event.payload.action == 'created'
           && has(event.payload.issue.pull_request)
@@ -289,12 +298,15 @@ events:
 
   - name: review
     description: "A review was submitted on a pull request."
+    timeout: "72h"
+    max_timeout: "168h"
     message: >
       {event.payload.review.user.login} submitted a
       {event.payload.review.state} review on PR
       #{event.payload.pull_request.number}: {event.payload.review.body}
     receive:
       webhook:
+        secret: "{settings.github_webhook_secret}"
         filter: >
           event.payload.action == 'submitted'
           && event.payload.repository.owner.login == parameters.owner
