@@ -12,7 +12,8 @@
         "resources/tool",
         "resources/tool-runtimes",
         "resources/bundle",
-        "resources/schedule"
+        "resources/schedule",
+        "resources/trigger"
       ]
     },
     {
@@ -22,7 +23,8 @@
       "items": [
         "capabilities/task-context",
         "capabilities/middleware",
-        "capabilities/bindings"
+        "capabilities/bindings",
+        "capabilities/events"
       ]
     },
     "glossary",

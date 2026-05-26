@@ -2,7 +2,7 @@
 id: concepts
 sidebar_position: 3
 title: Concepts
-description: The core concepts of the Common Agent Specification — resources, tasks, capabilities, the value pipeline, middleware, and expressions.
+description: The core concepts of the Common Agent Specification — resources, tasks, capabilities, events, the value pipeline, middleware, and expressions.
 ---
 
 # Concepts
@@ -11,12 +11,13 @@ The concepts below are the building blocks of the Common Agent Specification. Re
 
 ## Resources
 
-Everything in the specification is defined as a **YAML manifest**. There are four resource types:
+Everything in the specification is defined as a **YAML manifest**. There are five resource types:
 
-- **Agent** — pairs a system prompt with a set of capabilities. Defines what an agent can do, what constraints apply, and how it interacts with tools.
-- **Tool** — declares one or more callable capabilities and the execution backend that backs each one (HTTP, filesystem, MCP, CEL, etc.).
+- **Agent** — pairs a system prompt with a set of capabilities. Defines what an agent can do, what constraints apply, and how it interacts with tools and events.
+- **Tool** — declares one or more outbound actions and the execution backend that backs each one (HTTP, filesystem, MCP, CEL, etc.). A tool may also declare inbound events — signals from external platforms that the agent can respond to.
 - **Schedule** — triggers an agent automatically on a recurring cron cadence.
-- **Bundle** — a portable multi-document YAML file containing any combination of agents, tools, and schedules. Bundles are the distribution format for sharing and importing configurations.
+- **Trigger** — triggers an agent automatically when an inbound event matches its conditions. The event-driven counterpart to Schedule.
+- **Bundle** — a portable multi-document YAML file containing any combination of agents, tools, schedules, and triggers. Bundles are the distribution format for sharing and importing configurations.
 
 Agents and tools are the core pair. An agent *uses* tools; tools don't know about agents. The same tool can be shared across many agents.
 
@@ -28,24 +29,29 @@ A **message** is one complete conversational exchange: the input from the caller
 
 Inside a task, the runtime processes each message with a continuous loop:
 
-1. Input arrives — a user message, a scheduled trigger, or a continuation of a previous conversation.
+1. Input arrives — a user message, a scheduled trigger, an inbound event, or a continuation of a previous conversation.
 2. The LLM is called with the system prompt and conversation history.
-3. The LLM either sends a message and the task goes idle, or decides to invoke a capability.
-4. If a capability is invoked, the runtime executes it and feeds the result back to the LLM as a new turn.
+3. The LLM either sends a message and the task goes idle, or decides to invoke an action.
+4. If an action is invoked, the runtime executes it and feeds the result back to the LLM as a new turn.
 5. Steps 2–4 repeat until the LLM sends a message.
 
 ## Capabilities
 
-A **capability** is an action the LLM can invoke during a task. The Common Agent Specification deliberately presents all capabilities through the same interface — the LLM sees a named, callable function regardless of what backs it. This makes capabilities a superset of what other platforms call "tools": they can be backed by an HTTP endpoint, a filesystem, a CEL expression, an MCP server, or another agent running its own autonomous conversation loop. The implementation detail is invisible to the model.
+A **capability** is anything an agent can do or respond to during a task. An agent's capabilities come in three forms:
 
-When the backing implementation is another agent, this is called **delegation**. A delegated capability creates an autonomous child task that runs its own conversation loop and returns the result to the parent — but from the LLM's perspective, it is indistinguishable from any other capability invocation. The manifest author decides what capabilities are available; the LLM decides when and how to use them. See [Tool Runtimes](./resources/tool-runtimes) for the available backends.
+- **Actions** — outbound functions the LLM can invoke. The specification presents all actions through the same interface: the LLM sees a named, callable function regardless of whether it's backed by HTTP, a filesystem, a CEL expression, an MCP server, or any other runtime.
+- **Events** — inbound signals from external platforms that inject input into a running task. Tools declare both their actions and their events; when an agent lists a tool as a capability it automatically subscribes to all of the tool's events, with no extra configuration required.
+- **Delegation** — another agent exposed as a capability. When invoked, it creates an autonomous child task that runs its own conversation loop and returns its output to the parent. From the LLM's perspective, delegation is indistinguishable from invoking any other action.
+
+All three forms flow through the same middleware and guardrail pipeline. See [Events](./capabilities/events) and [Tool Runtimes](./resources/tool-runtimes) for the full capability surface.
 
 ## The Value Pipeline
 
 **Parameters** are the structured inputs a capability expects at invocation time. How they are provided depends on context:
 
-- For **tool capabilities**, parameters are generated by the LLM when it decides to invoke the capability — describing the action it wants to take. They can also be injected deterministically via a binding, bypassing the LLM entirely.
-- For **agents**, parameters define the structured input the agent accepts from its caller — a user creating a task, or a parent agent invoking it as a delegation. When used in delegation, a parent agent can bind specific parameter values directly, without involving its own LLM.
+- For **tool actions**, parameters are generated by the LLM when it decides to invoke the action. They can also be injected deterministically via a binding, bypassing the LLM entirely.
+- For **tool events**, all root tool parameters are available as `parameters.*` inside the event's `receive.filter` CEL expression, so the tool author can use them to scope which events are routed. Parameters with a binding are hidden from the LLM and have their allow list entry sealed — making them reliable for use in filters. `require_binding: true` is a tool-side validation constraint that ensures the agent must provide a binding.
+- For **agents**, parameters define the structured input the agent accepts from its caller.
 
 **Settings** are a separate category: static, operator-configured values declared in a tool manifest — API keys, base URLs, environment-specific configuration. They are never exposed to the LLM and never generated by it. Settings apply only to tools; agents do not have settings.
 
@@ -53,7 +59,7 @@ When the backing implementation is another agent, this is called **delegation**.
 
 ## Middleware and Guardrails
 
-The concept of a **guardrail** in most platforms means running a prompt or response through an LLM-based content filter — probabilistic checks with no access to what happened earlier in a conversation. Common Agents guardrails are a fundamentally different thing: deterministic, logic-driven policy steps that can reference the full task context. They know what the user sent, what the agent has already done, which capabilities were invoked, and what the results were.
+The concept of a **guardrail** in most platforms means running a prompt or response through an LLM-based content filter — probabilistic checks with no access to what happened earlier in a conversation. Common Agents guardrails are a fundamentally different thing: deterministic, logic-driven policy steps that can reference the full task context. They know what the user sent, what the agent has already done, which actions were invoked, and what the results were.
 
 In Common Agents, guardrails are applied at the agent's conversational boundary — validating input from the caller and output back to the caller, across the entire conversation. Middleware is the same mechanism applied to individual capability invocations. Both support the same step types, the same context access, and the same deterministic logic. The only difference is where they are applied.
 
@@ -71,7 +77,7 @@ headers:
   Authorization: "Bearer {settings.api_key}"
 ```
 
-**Expression fields** — middleware assertions, binding values, guardrail conditions, transforms — take a CEL expression directly as the field value, with no surrounding string to interpolate into. The entire field is evaluated as logic:
+**Expression fields** — middleware assertions, binding values, guardrail conditions, transforms, event `receive.filter` — take a CEL expression directly as the field value, with no surrounding string to interpolate into. The entire field is evaluated as logic:
 
 ```yaml
 assert: "context.capabilities.fetch_ticket.count_successful > 0"

@@ -7,10 +7,12 @@ description: Full specification of the Agent manifest format for the Common Agen
 
 # Agent
 
+An agent pairs a system prompt with a set of capabilities, defining what an LLM can do, what constraints apply, and how it interacts with the outside world.
+
 An agent is defined by a YAML file with the following schema:
 
 ```yaml
-kind: "commonagents.info/v1/agent"
+kind: "commonagents.info/v1beta2/agent"
 namespace: str
 name: str
 description: str
@@ -35,6 +37,18 @@ parameters:
 capabilities:
   <key>: "*" | Capability
 
+    # The string literal "*" indicates unrestricted access: all sub-capabilities
+    # visible to the LLM, no middleware, and no bindings. An empty object {} is
+    # NOT valid and MUST be rejected.
+    #
+    # Capability (object with at least one field):
+    #     include: list[str] | None
+    #     bindings: dict[str, str] | None
+    #     event_timeout: str | None
+    #     before_first: list[MiddlewareStep] | None
+    #     before: list[MiddlewareStep] | None
+    #     after: list[MiddlewareStep] | None
+
 model_capabilities: list[str] | None
 
 guardrails:
@@ -49,7 +63,7 @@ exposes:
 
 ### Identity
 
-1. **`kind`** — Identifies this manifest as an Agent. A manifest with a different `kind` value is not defined by this specification.
+1. **`kind`** — Identifies this manifest as an Agent. Must be `"commonagents.info/v1beta2/agent"`.
 2. **`namespace`** — Identifies the namespace this agent belongs to.
 3. **`name`** — Identifies the agent uniquely within its namespace.
 4. **`description`** — A human-readable description of the agent's purpose.
@@ -91,35 +105,38 @@ exposes:
 11. **`parameters`** — When present, defines the structured input this agent accepts at task creation. The schema itself is static — no interpolation. Uses [`ParameterSchema`](../reference/parameters) semantics:
     - A property **without** a `default` is required — the caller must supply a value.
     - A property **with** a `default` is optional — the default is used when the value is absent.
-    - `allow_from_llm: false` — the runtime does not expose this parameter to the LLM; it must be supplied by a binding.
+    - `require_binding: true` — a **validation constraint**: the parent agent invoking this sub-agent must supply a binding for this parameter. Without a binding the configuration is invalid and the runtime errors. It is the binding that hides the parameter from the LLM.
     - `message` is a reserved parameter name and may not be used.
 
 ### Capabilities
 
-A **capability** is an action the LLM can invoke during a task. Capabilities come in two forms:
+A **capability** is anything the LLM can invoke during a task, or that can send inbound events to the task. Capabilities come in three forms:
 
-- **Tool capabilities** — functions backed by a real execution backend (HTTP, CEL, filesystem, MCP, etc.). The LLM never sees the raw tool — only its individual named capabilities, presented as callable functions.
-- **Agent delegation** — another agent exposed as a capability. When invoked, the runtime creates an autonomous child task that runs its own conversation loop and returns its output as a capability result. From the LLM's perspective this is indistinguishable from a tool call.
+- **Tool actions** — outbound functions backed by a real execution backend (HTTP, CEL, filesystem, MCP, etc.). The LLM never sees the raw tool — only its individual named actions, presented as callable functions.
+- **Tool events** — inbound signals from external platforms. When a tool is declared as a capability, all of its events are automatically subscribed. Events inject input into the task using the tool's `message` template, scoped by the agent's bindings. See [Events](../capabilities/events).
+- **Agent delegation** — another agent exposed as a capability. When invoked, the runtime creates an autonomous child task that runs its own conversation loop and returns its output as a capability result. From the LLM's perspective this is indistinguishable from a tool action.
 
-12. **`capabilities`** — Defines the capabilities available to the LLM for this agent. Each key references a tool or another agent. Each value is either `"*"` or a `Capability` object.
+12. **`capabilities`** — Defines the capabilities available to this agent. Each key references a tool or another agent. Each value is either `"*"` or a `Capability` object.
 
-    **`"*"` (wildcard)** — All sub-capabilities are visible to the LLM, with no middleware and no bindings.
+    **`"*"` (wildcard)** — All actions are visible to the LLM and all events are subscribed, with no middleware and no bindings.
 
     **`Capability` object:**
 
     ```yaml
     include: list[str] | None
     bindings: dict[str, str] | None
+    event_timeout: str | None        # Go duration string — overrides tool event timeout
     before_first: list[MiddlewareStep] | None
     before: list[MiddlewareStep] | None
     after: list[MiddlewareStep] | None
     ```
 
-    - **`include`** — When present, only the named sub-capabilities are visible to the LLM. An explicit empty list `[]` hides all sub-capabilities. No interpolation.
-    - **`bindings`** — Each value is a full **CEL expression** (not `{...}` interpolation) evaluated at invocation time. Available roots: `context`, `runtime`, `now`. See [Bindings](../capabilities/bindings).
+    - **`include`** — When present, only the named actions **and events** are active. Actions not in the list are hidden from the LLM; events not in the list are not subscribed. An explicit empty list `[]` hides all actions and subscribes to no events. No interpolation.
+    - **`bindings`** — Each value is a full **CEL expression** (not `{...}` interpolation) evaluated at invocation time. Available roots: `context`, `runtime`, `now`. Binding values populate `parameters.*` which the tool's event `receive.filter` expressions can reference to scope which events are routed to this agent. See [Bindings](../capabilities/bindings).
+    - **`event_timeout`** — optional Go `time.Duration` string (e.g. `"24h"`, `"48h"`). Overrides the tool's per-event `timeout` for all events on this capability. The effective timeout is silently clamped to the tool's `max_timeout` when one is declared. If absent, the tool's `timeout` is used as the default. See [Events — Subscription Lifecycle](../capabilities/events#subscription-lifecycle).
     - **`before_first`** — Middleware steps evaluated before the first invocation of this capability in a task only.
-    - **`before`** — Middleware steps evaluated before every invocation.
-    - **`after`** — Middleware steps evaluated after every invocation, before the result is returned to the LLM.
+    - **`before`** — Middleware steps evaluated before every action invocation **and** before every incoming event activation. When evaluated for an event, the `event` variable is available in CEL scope. Use `!has(event) || <condition>` for assertions that should only apply to events. See [Events](../capabilities/events).
+    - **`after`** — Middleware steps evaluated after every action invocation, before the result is returned to the LLM. Also evaluated after each incoming event is formatted, before it is committed as input. Use `has(event)` to apply transforms only to event-originated turns.
 
     See [Middleware](../capabilities/middleware) for the full step specification.
 
@@ -147,34 +164,41 @@ When a capability key references another agent, the runtime presents it to the L
 ## Example
 
 ```yaml
-kind: "commonagents.info/v1/agent"
+kind: "commonagents.info/v1beta2/agent"
 namespace: "engineering"
-name: "code-reviewer"
-description: "Reviews pull requests and suggests improvements."
+name: "coder-agent"
+description: "An autonomous software engineer that responds to PR feedback."
 prompt: |
   You are an expert software engineer helping {context.user.email}.
-  Review the provided pull request diff and give constructive feedback.
-  Focus on correctness, maintainability, and security. Be concise.
+  Open pull requests, push commits, and address review feedback.
 
 model: "gemini/gemini-2.5-flash"
 memory: task
 
 limits:
-  max_turns: 10
-  max_age: "30m"
+  max_turns: 20
+  max_age: "2h"
 
 capabilities:
   github-file:
-    include: [read_chunk]
     bindings:
-      repo: "context.input[0].repo"
-  slack-notify:
+      owner: "buoyant-systems"
+      repo:  "agent-mesh"
+
+  github-pr:
+    bindings:
+      owner: "buoyant-systems"
+      repo:  "agent-mesh"
+    event_timeout: "48h"   # override tool default (72h), clamped to tool max (168h)
+    include: [create_pr, comment, review]   # expose create_pr action; subscribe to comment + review events
     before:
-      - assert: "context.user.id != ''"
-        error_message: "User identity required to post to Slack."
+      - assert: "context.capabilities['github_pr'].count_successful < 20"
+        error_message: "Action limit reached for this session."
+      - assert: "!has(event) || event.author != 'agentmesh-bot'"
+        error_message: "Ignoring bot events."
 
 guardrails:
   before:
     - assert: "size(input[0].message) < 50000"
-      error_message: "Pull request diff too large to review."
+      error_message: "Input too large."
 ```

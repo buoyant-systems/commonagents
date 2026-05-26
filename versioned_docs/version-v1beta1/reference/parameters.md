@@ -7,22 +7,23 @@ description: How parameters flow from settings through bindings, LLM generation,
 
 # Parameter Pipeline
 
-The parameter pipeline describes how values reach a tool capability at execution time. Understanding this pipeline is essential for writing secure tools that prevent prompt injection and enforce data integrity.
+The parameter pipeline describes how values reach a tool capability at execution time, and how those values control event routing. Understanding this pipeline is essential for writing secure tools that prevent prompt injection and enforce data integrity.
 
-## Parameter Sources
+## Parameter Hierarchy
 
-A capability parameter can originate from four sources, in priority order (highest wins):
+A tool has three levels of parameters, each with distinct scope:
 
-```
-1. Agent Bindings      ← highest priority, always wins
-2. Middleware Bindings ← overrides capability-level bindings in invoke steps
-3. LLM Generation     ← blocked if allow_from_llm: false
-4. Default Value      ← from the parameter schema's default field
-```
+| Level | Field | Scope |
+|---|---|---|
+| **Root** | `tool.parameters` | Universal — available to ALL actions (in `execute` interpolation) AND ALL events (in `receive.filter`). Only parameters that apply across the entire tool belong here. |
+| **Per-action** | `action.parameters` | Specific to one action — additional inputs the LLM provides when invoking that action. |
+| **Per-event** | `event.parameters` | Specific to one event — additional filter inputs scoped to that event's `receive.filter`. |
+
+All three levels share a single **allow list namespace** keyed by parameter name. See [Action Allow List](#action-allow-list) below.
 
 ## ParameterSchema
 
-Tool and agent parameters use a shared `ParameterSchema` format:
+All three levels use the same `ParameterSchema` format:
 
 ```yaml
 properties:
@@ -30,7 +31,7 @@ properties:
     type: string | number | boolean | object | array
     description: str
     default: any | None        # presence determines required/optional
-    allow_from_llm: bool       # default: true
+    require_binding: bool      # default: false
     format: str | None         # e.g. "password", "uri", "date-time"
     enum: list[any] | None
     # ... standard JSON Schema properties
@@ -40,16 +41,51 @@ properties:
 
 - A property **without** a `default` field is **required** — it must be provided by the LLM or a binding before execution.
 - A property **with** a `default` field is **optional** — the runtime backfills the default if the value is absent.
-- There is no explicit `required` list. Required/optional status is derived entirely from the presence or absence of `default`.
 
-### `allow_from_llm: false`
+### `require_binding: true`
 
-When set to `false`, the runtime MUST:
-- Reject any LLM-generated value for this parameter.
-- Require the value to be provided by an [agent binding](../capabilities/bindings) or a middleware binding.
-- Return an error to the LLM if the parameter is missing and no binding is configured.
+`require_binding: true` is a **tool-side validation constraint**. When set:
+- The API server rejects any agent that references this tool without providing a binding for the parameter.
+- If no binding is configured, the configuration is invalid and the runtime MUST error.
 
-This is the primary mechanism for enforcing that security-critical parameters (user IDs, account numbers, resource identifiers) cannot be influenced by prompt injection.
+Note: it is the **binding** (not this flag) that:
+- Hides the parameter from the LLM-facing schema.
+- Seals the action allow list entry so it cannot be expanded by LLM action calls.
+
+A binding can exist without `require_binding: true` — the parameter is still hidden and the allow list entry is still sealed. `require_binding: true` only adds the validation guarantee that the binding is not accidentally omitted.
+
+Parameters with `require_binding: true` are well-suited for use in event filters: the constraint guarantees a binding is always present, and the binding ensures the value is reliably agent-controlled and the allow list entry is sealed from task start.
+
+## Parameter Sources
+
+A capability parameter can originate from four sources, in priority order (highest wins):
+
+```
+1. Agent Bindings      ← highest priority, always wins; hides parameter from LLM
+2. Middleware Bindings ← overrides capability-level bindings in invoke steps
+3. LLM Generation     ← blocked for parameters that have an agent binding
+4. Default Value      ← from the parameter schema's default field
+```
+
+## Action Allow List
+
+The allow list is maintained **per-tool, per-task**, keyed by **parameter name**. It is a flat namespace — root, per-action, and per-event parameters all share the same allow list if they share a name.
+
+**Growing the allow list:**
+- Every time the LLM calls an action on a tool, ALL resolved parameter values (root + per-action) are added to the allow list set for their parameter name.
+- A name accumulates multiple values over a task if the LLM calls actions with different values.
+
+**Using the allow list in event filters:**
+- `receive.filter` expressions that reference `parameters.*` are resolved against the allow list.
+- The filter passes if the payload value is a member of the allow list set for that name.
+- If a parameter's allow list is empty (no action has been called with that name yet), events referencing it are **discarded**.
+
+**Sealing the allow list:**
+- A parameter with an agent-defined binding has its allow list entry **sealed** at task start. The runtime MUST NOT append to it from action calls.
+- `require_binding: true` is a validation constraint that ensures a binding is present — it is not itself what seals the entry.
+
+**Per-action / per-event sync:**
+- If a per-action parameter and a per-event parameter share the same name, they are the same allow list entry. This is how tool authors link specific action inputs to specific event filters — through naming.
 
 ## Interpolation
 
@@ -61,6 +97,8 @@ url: "https://api.github.com/repos/{settings.github.owner}/{parameters.repo}/con
 headers:
   Authorization: "Bearer {settings.github.token}"
 ```
+
+Event `message` templates use `{event.payload.*}` interpolation — referencing the raw inbound payload directly. There is no extraction alias layer.
 
 ## Settings
 
@@ -95,27 +133,46 @@ headers:
 # Tool manifest
 parameters:
   properties:
-    user_id:
+    # Root: applies to all actions + all events
+    repo_id:
       type: string
-      allow_from_llm: false    # MUST be provided by binding
-    ticket_id:
-      type: string             # required — LLM must provide, or binding overrides
-    priority:
-      type: string
-      default: "normal"        # optional — LLM may override, or use default
+      require_binding: true    # validation constraint: binding MUST be provided
+
+actions:
+  - name: create_issue
+    parameters:
+      properties:
+        # Per-action: LLM provides this; also populates allow list for 'assignee'
+        assignee:
+          type: string
+          description: "GitHub login of the assignee."
+
+events:
+  - name: issue_assigned
+    parameters:
+      properties:
+        # Per-event: shares 'assignee' allow list with create_issue action
+        # Events only route for assignees the LLM has previously specified
+        assignee:
+          type: string
+    receive:
+      webhook:
+        filter: >
+          event.payload.action == 'assigned'
+          && event.payload.repository.id == parameters.repo_id
+          && event.payload.assignee.login == parameters.assignee
 
 # Agent manifest
 capabilities:
-  support-tool:
+  my-tool:
     bindings:
-      user_id: "context.user.id"      # always injected from context
-      ticket_id: "context.input[0].ticket_id"  # from structured input
-    # priority: not bound → LLM decides, falls back to "normal"
+      repo_id: "context.input[0].repo_id"   # sealed — allow list immutable
+      # assignee: not bound → starts empty; grows as LLM calls create_issue
 ```
 
 Execution flow for this example:
-
-1. `user_id` → injected from `context.user.id` via binding. LLM cannot override.
-2. `ticket_id` → injected from `context.input[0].ticket_id` via binding. LLM cannot override.
-3. `priority` → LLM generates a value, or `"normal"` is used if LLM omits it.
-4. All three values are interpolated into the tool spec fields before execution.
+1. `repo_id` → sealed from binding at task start. `issue_assigned` events for this repo are routable from the beginning, scoped to `repo_id` only.
+2. `assignee` → allow list starts empty. `issue_assigned` events for any assignee are **discarded**.
+3. LLM calls `create_issue` with `assignee: "alice"` → allow list for `assignee` becomes `{"alice"}`.
+4. `issue_assigned` events for Alice now route. Events for other assignees are **discarded**.
+5. LLM calls `create_issue` with `assignee: "bob"` → allow list becomes `{"alice", "bob"}`. Events for either now route.
