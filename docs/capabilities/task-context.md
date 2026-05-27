@@ -71,10 +71,10 @@ context:
 
 `input` and `output` are lists of `TaskIO` objects. Each `TaskIO` contains:
 
-- `message` — a list of content parts (the conversational text)
+- `message` — a list of content parts (the conversational text). This is a **well-known key** that MUST be present on every input.
 - Dynamic keys from the agent's `parameters` schema (for input entries) or `exposes` schema (for output entries)
 
-The initial task input (`input[0]`) contains validated agent parameters as dynamic keys. CEL bindings reference them via:
+Each input turn carries its own snapshot of `message` and parameter values. CEL bindings reference them via:
 
 ```cel
 context.input[0].ticket_id

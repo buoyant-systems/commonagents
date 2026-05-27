@@ -17,7 +17,6 @@ namespace: str
 name: str
 description: str
 prompt: str
-default_message: str | None
 
 model: str | None
 priority: int | None
@@ -79,7 +78,6 @@ exposes:
 
    Example: `"You are helping {context.user.email} with their support tickets."`
 
-6. **`default_message`** — When present, used as the input message when no message is provided at task creation.
 
 ### Model & Priority
 
@@ -102,11 +100,11 @@ exposes:
 
 ### Parameters
 
-11. **`parameters`** — When present, defines the structured input this agent accepts at task creation. The schema itself is static — no interpolation. Uses [`ParameterSchema`](../reference/parameters) semantics:
+11. **`parameters`** — When present, defines the structured input this agent accepts. The schema itself is static — no interpolation. Uses [`ParameterSchema`](../reference/parameters) semantics:
     - A property **without** a `default` is required — the caller must supply a value.
     - A property **with** a `default` is optional — the default is used when the value is absent.
     - `require_binding: true` — a **validation constraint**: the parent agent invoking this sub-agent must supply a binding for this parameter. Without a binding the configuration is invalid and the runtime errors. It is the binding that hides the parameter from the LLM.
-    - `message` is a reserved parameter name and may not be used.
+    - `message` is a **well-known key** of type `list[ContentPart]`. It is the primary conversational content for a task turn. `message` does not need to be declared in the schema — it is implicitly part of every input. However, `message` MUST be present on every input, either provided explicitly by the caller or resolved from a `default` declared in the schema. If `message` is absent and no default is declared, the runtime MUST reject the input. An agent MAY declare `message` in its schema solely to specify a `default` value.
 
 ### Capabilities
 
