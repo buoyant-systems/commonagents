@@ -20,7 +20,7 @@ prompt: str
 
 model: str | None
 priority: int | None
-memory: "agent" | "user" | "task" | "none"   # default: "task"
+mount: "none" | "task" | "agent" | "workspace"   # default: "none"
 
 limits:
   max_turns: int | None
@@ -83,11 +83,11 @@ exposes:
 
 7. **`model`** — When present, specifies the model the runtime should use for this agent.
 8. **`priority`** — When present, specifies the scheduling priority for tasks created from this agent.
-9. **`memory`** — Controls the scope of LLM memory. Defaults to `"task"` when absent.
-   - `"agent"` — memory persists across all tasks for this agent.
-   - `"user"` — memory persists per agent+user combination.
-   - `"task"` — memory is scoped to the individual task.
-   - `"none"` — memory functionality is not exposed to the LLM.
+9. **`mount`** — Controls the agent's access to the workspace mount. Defaults to `"none"` when absent. See [Mount](mount).
+   - `"none"` — no mount access. `mount.*` template variables and `mount.read()`/`mount.write()` CEL functions are not available.
+   - `"task"` — mount prefix is scoped to the individual task.
+   - `"agent"` — mount prefix is scoped to the agent (shared across tasks).
+   - `"workspace"` — mount prefix is scoped to the entire workspace.
 
 ### Limits
 
@@ -110,7 +110,7 @@ exposes:
 
 A **capability** is anything the LLM can invoke during a task, or that can send inbound events to the task. Capabilities come in three forms:
 
-- **Tool actions** — outbound functions backed by a real execution backend (HTTP, CEL, filesystem, MCP, etc.). The LLM never sees the raw tool — only its individual named actions, presented as callable functions.
+- **Tool actions** — outbound functions backed by a real execution backend (HTTP, CEL, MCP, etc.). The LLM never sees the raw tool — only its individual named actions, presented as callable functions.
 - **Tool events** — inbound signals from external platforms. When a tool is declared as a capability, all of its events are automatically subscribed. Events inject input into the task using the tool's `message` template, scoped by the agent's bindings. See [Events](../capabilities/events).
 - **Agent delegation** — another agent exposed as a capability. When invoked, the runtime creates an autonomous child task that runs its own conversation loop and returns its output as a capability result. From the LLM's perspective this is indistinguishable from a tool action.
 
@@ -148,6 +148,9 @@ When a capability key references another agent, the runtime presents it to the L
 
     Well-known values:
     - `"web-search"` — Enables LLM-native web search grounding.
+    - `"image-generation"` — Enables LLM-native image generation. **Requires** a non-`none` `mount` — generated media is written to mount storage.
+    - `"audio-generation"` — Enables LLM-native audio generation. **Requires** a non-`none` `mount`.
+    - `"video-generation"` — Enables LLM-native video generation. **Requires** a non-`none` `mount`.
 
     A model capability name may not duplicate a key in the `capabilities` map.
 
@@ -171,7 +174,7 @@ prompt: |
   Open pull requests, push commits, and address review feedback.
 
 model: "gemini/gemini-2.5-flash"
-memory: task
+mount: agent     # mount.read()/mount.write() enabled, prefix scoped to agent
 
 limits:
   max_turns: 20

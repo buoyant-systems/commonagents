@@ -29,6 +29,7 @@ Interpolation roots available in tool specs:
 | `{settings.<key>}` | Namespace-level tool settings |
 | `{parameters.<key>}` | LLM-provided or binding-provided parameters |
 | `{session.<key>}` | Session state (stateful_session runtimes only) |
+| `{mount.<key>}` | Mount coordinates: `bucket`, `prefix`, `backend`. Only present when agent `mount` is non-`none`. |
 | `{auth.<provider>}` | Auth tokens from the runtime's token manager |
 | `{context.<path>}` | Task context fields |
 
@@ -77,7 +78,7 @@ now   # e.g. "2026-05-20T03:45:00Z"
 
 ## Async Macros
 
-The runtime MUST support the following macros in middleware `assert`, `transform`, and `invoke` steps:
+The runtime MUST support the following macros in middleware `assert`, `transform`, and `invoke` steps, and in CEL tool expressions:
 
 ### `review(user: str)`
 
@@ -95,15 +96,69 @@ Pauses execution and requires the specified user to approve or deny the action. 
   on_fail: lock_task
 ```
 
+## Mount I/O Functions (CEL Tool Expressions Only)
+
+When an agent's `mount` scope is non-`none`, the following functions are available in CEL tool `expression` fields. They are **not** available in middleware, bindings, or guardrails. See [Mount](../resources/mount) for the full mount architecture.
+
+### `mount.read(path: string) -> string`
+
+Reads the contents of a file from the agent's scoped mount storage. The path is relative to the agent's resolved `mount.prefix`.
+
+```yaml
+execute:
+  cel:
+    expression: mount.read("_memory/" + input.key)
+```
+
+### `mount.write(path: string, content: string) -> string`
+
+Writes content to a file in the agent's scoped mount storage. Returns the written content.
+
+```yaml
+execute:
+  cel:
+    expression: mount.write("_memory/" + input.key, input.value)
+```
+
+> **Note:** Path traversal (`../`) is rejected at runtime.
+
+## LLM Capability Script Functions
+
+The LLM capability script is the most restricted CEL environment — it is authored by the LLM at runtime and is **untrusted**. The LLM cannot access `context`, `settings`, `auth`, or any other privileged variables. The only functions available are the agent's declared capabilities and the built-in functions below.
+
+### `<capability_name>(args: map) -> any`
+
+Invokes a capability with the given arguments. The capability name is the function name derived from the agent's capability configuration (see [Task Context — Capability Keys](../capabilities/task-context#capability-keys)).
+
+```cel
+github_file_read_chunk({"path": "README.md", "start_line": 1, "end_line": 50})
+```
+
+### `file(path: string)`
+
+References a file in the agent's mount storage without exposing its raw contents to the LLM. The MIME type is inferred from the file extension. Available only when the agent's `mount` scope is non-`none`.
+
+The LLM sees a summary description of the file (e.g., `report.pdf (application/pdf, 1.2MB)`) rather than the binary content. The reference can be passed as a capability argument so that tools can operate on the file directly.
+
+```cel
+# Pass a file reference to a tool capability
+post_attachment({"document": file("reports/summary.pdf")})
+```
+
 ## CEL Context Variables by Scope
 
-| Variable | Middleware `before` | Middleware `after` | Guardrail `before` | Guardrail `after` | CEL tool | Binding |
-|---|---|---|---|---|---|---|
-| `context` / `c` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `input` / `i` | ✅ | ✅ | ✅ | | ✅ | |
-| `output` / `o` | | ✅ | | ✅ | | |
-| `now` | ✅ | ✅ | ✅ | ✅ | ✅ | |
-| `c.cap` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Variable / Function | Middleware | Guardrail | CEL tool | Binding | LLM script |
+|---|---|---|---|---|---|
+| `context` / `c` | ✅ | ✅ | ✅ | ✅ | |
+| `input` / `i` | ✅ (before+after) | ✅ (before) | ✅ | | |
+| `output` / `o` | ✅ (after) | ✅ (after) | | | |
+| `now` | ✅ | ✅ | ✅ | | |
+| `c.cap` | ✅ | ✅ | ✅ | ✅ | |
+| `review()` | ✅ | | ✅ | | |
+| `mount.read()` | | | ✅ | | |
+| `mount.write()` | | | ✅ | | |
+| `file()` | | | | | ✅ |
+| `<capability>()` | | | | | ✅ |
 
 ## Error Message Interpolation
 
@@ -117,3 +172,4 @@ Pauses execution and requires the specified user to approve or deny the action. 
 
 Available in `after` steps: `{output}` references the current tool result.
 Available in `before` steps: `{output}` is not available.
+

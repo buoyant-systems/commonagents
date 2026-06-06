@@ -140,7 +140,8 @@ The `context` variable is available in:
 | Guardrail `before` steps | `context`, `input`, `now` |
 | Guardrail `after` steps | `context`, `output`, `now` |
 | Agent `bindings` | `context` |
-| CEL tool `expression` | `context`, `input`, `now` |
+| CEL tool `expression` | `context`, `input`, `now`, `mount.read()`, `mount.write()` |
 | Agent prompt interpolation | `context` |
+| LLM capability script | `<capability>()`, `file()` — no `context` access |
 
 See [CEL Reference](../reference/cel) for the full list of available functions and macros.

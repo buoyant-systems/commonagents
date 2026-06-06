@@ -14,7 +14,7 @@ The concepts below are the building blocks of the Common Agent Specification. Re
 Everything in the specification is defined as a **YAML manifest**. There are five resource types:
 
 - **Agent** — pairs a system prompt with a set of capabilities. Defines what an agent can do, what constraints apply, and how it interacts with tools and events.
-- **Tool** — declares one or more outbound actions and the execution backend that backs each one (HTTP, filesystem, MCP, CEL, etc.). A tool may also declare inbound events — signals from external platforms that the agent can respond to.
+- **Tool** — declares one or more outbound actions and the execution backend that backs each one (HTTP, CEL, MCP, etc.). A tool may also declare inbound events — signals from external platforms that the agent can respond to.
 - **Schedule** — triggers an agent automatically on a recurring cron cadence.
 - **Trigger** — triggers an agent automatically when an inbound event matches its conditions. The event-driven counterpart to Schedule.
 - **Bundle** — a portable multi-document YAML file containing any combination of agents, tools, schedules, and triggers. Bundles are the distribution format for sharing and importing configurations.
@@ -39,7 +39,7 @@ Inside a task, the runtime processes each message with a continuous loop:
 
 A **capability** is anything an agent can do or respond to during a task. An agent's capabilities come in three forms:
 
-- **Actions** — outbound functions the LLM can invoke. The specification presents all actions through the same interface: the LLM sees a named, callable function regardless of whether it's backed by HTTP, a filesystem, a CEL expression, an MCP server, or any other runtime.
+- **Actions** — outbound functions the LLM can invoke. The specification presents all actions through the same interface: the LLM sees a named, callable function regardless of whether it's backed by HTTP, a CEL expression, an MCP server, or any other runtime.
 - **Events** — inbound signals from external platforms that inject input into a running task. Tools declare both their actions and their events; when an agent lists a tool as a capability it automatically subscribes to all of the tool's events, with no extra configuration required.
 - **Delegation** — another agent exposed as a capability. When invoked, it creates an autonomous child task that runs its own conversation loop and returns its output to the parent. From the LLM's perspective, delegation is indistinguishable from invoking any other action.
 

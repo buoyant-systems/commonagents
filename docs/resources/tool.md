@@ -31,10 +31,8 @@ actions:
       stateless_http: object | None
       stateful_session: object | None
       openapi: object | None
-      filesystem: object | None
       mcp: object | None
       kubernetes_job: object | None
-    filesystem: str | None  # shorthand for well-known filesystem actions
 
 events:
   - name: str
@@ -54,7 +52,6 @@ events:
 stateless_http: object | None
 stateful_session: object | None
 openapi: object | None
-filesystem: object | None
 mcp: object | None
 ```
 
@@ -91,7 +88,6 @@ mcp: object | None
    - A `name` and `description` identifying it to the LLM.
    - An optional `parameters` schema (same semantics as the tool-level parameters).
    - Exactly one runtime backend declared in the `execute` block.
-   - Optionally, a `filesystem` shorthand string in place of an `execute` block, deriving from a well-known filesystem action.
 
    The runtime presents individual actions — not the tool itself — to the LLM as callable functions.
 
@@ -126,6 +122,9 @@ The following interpolation roots are available in **all** execution spec string
 | `{runtime.dashboard_url}` | Runtime dashboard URL |
 | `{runtime.api_root}` | Runtime API root URL |
 | `{agent.<key>}` | Agent metadata: `agent.name`, `agent.namespace` |
+| `{mount.bucket}` | Mount bucket name. Only present when agent `mount` is non-`none`. See [Mount](mount). |
+| `{mount.prefix}` | Mount scoped prefix. Only present when agent `mount` is non-`none`. |
+| `{mount.backend}` | Mount backend type (`gcs` or `s3`). Only present when agent `mount` is non-`none`. |
 | `auth.<provider>()` | Auth token from a registered provider (tool scope only) |
 
 The `cel` backend is the exception: its `expression` field is a **full CEL expression**, not `{...}` interpolation (see below).
@@ -155,15 +154,6 @@ execute:
 
 The `create`, `initialize`, and `teardown` HTTP call fields all support `{expression}` interpolation. The `execute` sub-block also supports full interpolation. `{session.<key>}` references are deferred until after the session is created.
 
-#### `filesystem`
-
-The filesystem configuration fields support `{expression}` interpolation:
-
-| Backend | Interpolated fields |
-|---|---|
-| `github` | `token`, `owner`, `repo`, `branch`, `destination_branch` |
-| `git` | `auth_token`, `repo_url`, `branch`, `destination_branch` |
-
 #### `kubernetes_job`
 
 `namespace` and all string values within `spec` support `{expression}` interpolation.
@@ -174,7 +164,7 @@ These backends derive their execution spec from an external source. Interpolatio
 
 ### Top-Level Runtime Blocks
 
-When top-level runtime configuration blocks are present (e.g. `stateless_http`, `filesystem`, `mcp`), they serve as shared configuration that individual action `execute` blocks inherit. The same interpolation roots apply.
+When top-level runtime configuration blocks are present (e.g. `stateless_http`, `mcp`), they serve as shared configuration that individual action `execute` blocks inherit. The same interpolation roots apply.
 
 ## Example
 

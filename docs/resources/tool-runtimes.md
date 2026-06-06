@@ -9,7 +9,7 @@ description: The available execution backends for tool actions and event receive
 
 A tool declares its execution behaviour through two kinds of runtimes:
 
-- **Action runtimes** — declared in an action's `execute` block. Determines how an outbound action invocation is executed (HTTP, CEL, filesystem, MCP, etc.).
+- **Action runtimes** — declared in an action's `execute` block. Determines how an outbound action invocation is executed (HTTP, CEL, MCP, etc.).
 - **Receive runtimes** — declared in an event's `receive` block. Determines how inbound events are delivered to the runtime.
 
 Both follow the same pattern: the runtime type is identified by which sub-key is present in the block.
@@ -114,30 +114,6 @@ execute:
 ```
 
 The runtime MUST derive parameters from the OpenAPI spec's operation definitions.
-
-### `filesystem`
-
-Reads and writes files on a virtual filesystem. The filesystem backend and its configuration are declared at the tool level.
-
-```yaml
-# Tool-level config
-filesystem:
-  local:
-    root: str            # Root path for all operations
-  # OR
-  github:
-    owner: str
-    repo: str
-    default_branch: str | None
-
-# Action shorthand (auto-generates name, description, execute block)
-actions:
-  - filesystem: "read_chunk"   # Well-known action name
-  - filesystem: "write_file"
-  - filesystem: "list_dir"
-```
-
-Well-known filesystem action names include: `read_chunk`, `write_file`, `list_dir`, `search`, `delete_file`, and others as defined by the runtime.
 
 ### `mcp`
 

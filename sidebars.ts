@@ -13,6 +13,7 @@ const sidebars: SidebarsConfig = {
         'resources/agent',
         'resources/tool',
         'resources/tool-runtimes',
+        'resources/mount',
         'resources/bundle',
         'resources/schedule',
         'resources/trigger',
