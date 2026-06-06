@@ -24,13 +24,13 @@ Every tool action must declare exactly one runtime backend in its `execute` bloc
 
 All runtimes MUST implement a three-phase lifecycle:
 
-1. **Initialize** — Called once per tool per task on first action invocation. Returns an initialized runtime state with interpolated configuration and any session data.
-2. **Invoke** — Called for each individual action execution. Returns a `CapabilityResult`. Operational errors (e.g. HTTP 5xx) MUST be reported via `CapabilityResult`, not as infrastructure errors. Only unreachable hosts, TLS errors, or configuration bugs are infrastructure errors.
-3. **Teardown** — Called when the task completes or the runtime state is evicted. Performs cleanup (e.g. closing sessions). Stateless runtimes implement this as a no-op.
+1. **Initialize** — Called once per tool per task on first action invocation. Returns an initialized state with interpolated configuration and any session data.
+2. **Invoke** — Called for each individual action execution. Returns the action result. Recoverable errors (e.g. HTTP 5xx, tool-level failures) are reported back to the LLM so it can retry or adapt. Only unrecoverable errors (unreachable endpoints, invalid configuration) terminate the task.
+3. **Teardown** — Called when the task completes or the state is evicted. Performs cleanup (e.g. closing sessions). Stateless runtimes implement this as a no-op.
 
 The runtime MUST distinguish:
-- **Infrastructure errors** — configuration bugs, unreachable endpoints. These terminate the task.
-- **Operational errors** — HTTP 5xx, tool-level failures. These are reported back to the LLM for potential recovery.
+- **Unrecoverable errors** — invalid configuration, unreachable endpoints. These terminate the task.
+- **Recoverable errors** — HTTP failures, tool-level errors. These are reported back to the LLM for potential recovery.
 
 ### `cel`
 

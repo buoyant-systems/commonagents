@@ -30,7 +30,7 @@ Interpolation roots available in tool specs:
 | `{parameters.<key>}` | LLM-provided or binding-provided parameters |
 | `{session.<key>}` | Session state (stateful_session runtimes only) |
 | `{mount.<key>}` | Mount coordinates: `bucket`, `prefix`, `backend`. Only present when agent `mount` is non-`none`. |
-| `{auth.<provider>}` | Auth tokens from the runtime's token manager |
+| `{auth.<provider>}` | Auth tokens from the configured auth provider |
 | `{context.<path>}` | Task context fields |
 
 ## CEL Expressions
@@ -82,7 +82,7 @@ The runtime MUST support the following macros in middleware `assert`, `transform
 
 ### `review(user: str)`
 
-Pauses execution and requires the specified user to approve or deny the action. The runtime yields the task until the review completes.
+Pauses execution and requires the specified user to approve or deny the action. The task is suspended until the review completes.
 
 ```yaml
 # Require the task owner to review before a write capability executes
@@ -120,7 +120,7 @@ execute:
     expression: mount.write("_memory/" + input.key, input.value)
 ```
 
-> **Note:** Path traversal (`../`) is rejected at runtime.
+> **Note:** Paths containing `../` are rejected.
 
 ## LLM Capability Script Functions
 

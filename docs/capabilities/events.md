@@ -81,7 +81,7 @@ capabilities:
       repo:  "agent-mesh"        # binding → sealed to this value
 ```
 
-`require_binding: true` on a parameter is a **tool-side validation constraint** that ensures the agent MUST configure a binding. It does not itself seal the allow list or hide the parameter — that is what the binding does. If a parameter has `require_binding: true` but no binding, the configuration is invalid and the runtime errors.
+`require_binding: true` on a parameter is a **tool-side validation constraint** that ensures the agent MUST configure a binding. It does not itself seal the allow list or hide the parameter — that is what the binding does. If a parameter has `require_binding: true` but no binding, the configuration is invalid.
 
 ## Using `include` to Filter Events
 
@@ -154,7 +154,7 @@ A subscription is created when a task starts and the agent's capabilities includ
 - The task is interrupted.
 - The subscription's timeout expires.
 
-When a task is interrupted, its subscriptions are removed immediately. However, the subscriptions are **automatically restored** when the task completes its next FSM step (e.g. when it receives new user input and begins processing). This prevents events from piling up during an interrupt, while allowing the task to resume event-driven behaviour naturally once it becomes active again.
+When a task is interrupted, its subscriptions are removed immediately. However, the subscriptions are **automatically restored** when the task resumes processing (e.g. when it receives new user input and begins its next step). This prevents events from piling up during an interrupt, while allowing the task to resume event-driven behaviour naturally once it becomes active again.
 
 ### Timeouts
 
@@ -169,7 +169,7 @@ effective = clamp(
 )
 ```
 
-When the effective timeout is finite, the runtime tracks a `last_activity_at` timestamp per subscription. Activity is defined as **any FSM step** — any state transition within the task worker (input ingestion, LLM generation, capability execution, middleware evaluation, etc.). The timeout clock resets on each step. When `now - last_activity_at > effective_timeout`, the subscription is removed — but the task is not deleted or errored.
+When the effective timeout is finite, the runtime tracks a `last_activity_at` timestamp per subscription. Activity is defined as **any processing step** — any state transition within the task (input ingestion, LLM generation, capability execution, middleware evaluation, etc.). The timeout clock resets on each step. When `now - last_activity_at > effective_timeout`, the subscription is removed — but the task is not deleted or errored.
 
 A runtime implementation MAY also enforce its own maximum timeout independent of the tool and agent declarations.
 

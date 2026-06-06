@@ -26,7 +26,7 @@ limits:
   max_turns: int | None
   max_prompt_tokens: int | None
   max_completion_tokens: int | None
-  max_age: str | None        # Go duration string, e.g. "2h", "30m"
+  max_age: str | None        # duration string, e.g. "2h", "30m"
   max_tool_calls: int | None
 
 parameters:
@@ -95,7 +95,7 @@ exposes:
     - `max_turns` — maximum number of LLM turns.
     - `max_prompt_tokens` — cumulative prompt token limit across all LLM calls.
     - `max_completion_tokens` — cumulative completion token limit.
-    - `max_age` — wall-clock duration limit as a Go `time.Duration` string (e.g. `"2h"`, `"30m"`).
+    - `max_age` — wall-clock duration limit (e.g. `"2h"`, `"30m"`).
     - `max_tool_calls` — total number of capability invocations.
 
 ### Parameters
@@ -103,8 +103,8 @@ exposes:
 11. **`parameters`** — When present, defines the structured input this agent accepts. The schema itself is static — no interpolation. Uses [`ParameterSchema`](../reference/parameters) semantics:
     - A property **without** a `default` is required — the caller must supply a value.
     - A property **with** a `default` is optional — the default is used when the value is absent.
-    - `require_binding: true` — a **validation constraint**: the parent agent invoking this sub-agent must supply a binding for this parameter. Without a binding the configuration is invalid and the runtime errors. It is the binding that hides the parameter from the LLM.
-    - `message` is a **well-known key** of type `list[ContentPart]`. It is the primary conversational content for a task turn. `message` does not need to be declared in the schema — it is implicitly part of every input. However, `message` MUST be present on every input, either provided explicitly by the caller or resolved from a `default` declared in the schema. If `message` is absent and no default is declared, the runtime MUST reject the input. An agent MAY declare `message` in its schema solely to specify a `default` value.
+    - `require_binding: true` — a **validation constraint**: the parent agent invoking this sub-agent must supply a binding for this parameter. Without a binding the configuration is invalid. It is the binding that hides the parameter from the LLM.
+    - `message` is a **well-known key** of type `list[ContentPart]`. It is the primary conversational content for a task turn. `message` does not need to be declared in the schema — it is implicitly part of every input. However, `message` MUST be present on every input, either provided explicitly by the caller or resolved from a `default` declared in the schema. If `message` is absent and no default is declared, the input is invalid. An agent MAY declare `message` in its schema solely to specify a `default` value.
 
 ### Capabilities
 
@@ -123,7 +123,7 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
     ```yaml
     include: list[str] | None
     bindings: dict[str, str] | None
-    event_timeout: str | None        # Go duration string — overrides tool event timeout
+    event_timeout: str | None        # duration string — overrides tool event timeout
     before_first: list[MiddlewareStep] | None
     before: list[MiddlewareStep] | None
     after: list[MiddlewareStep] | None
@@ -131,7 +131,7 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
 
     - **`include`** — When present, only the named actions **and events** are active. Actions not in the list are hidden from the LLM; events not in the list are not subscribed. An explicit empty list `[]` hides all actions and subscribes to no events. No interpolation.
     - **`bindings`** — Each value is a full **CEL expression** (not `{...}` interpolation) evaluated at invocation time. Available roots: `context`, `runtime`, `now`. Binding values populate `parameters.*` which the tool's event `receive.filter` expressions can reference to scope which events are routed to this agent. See [Bindings](../capabilities/bindings).
-    - **`event_timeout`** — optional Go `time.Duration` string (e.g. `"24h"`, `"48h"`). Overrides the tool's per-event `timeout` for all events on this capability. The effective timeout is silently clamped to the tool's `max_timeout` when one is declared. If absent, the tool's `timeout` is used as the default. See [Events — Subscription Lifecycle](../capabilities/events#subscription-lifecycle).
+    - **`event_timeout`** — optional duration string (e.g. `"24h"`, `"48h"`). Overrides the tool's per-event `timeout` for all events on this capability. The effective timeout is clamped to the tool's `max_timeout` when one is declared. If absent, the tool's `timeout` is used as the default. See [Events — Subscription Lifecycle](../capabilities/events#subscription-lifecycle).
     - **`before_first`** — Middleware steps evaluated before the first invocation of this capability in a task only.
     - **`before`** — Middleware steps evaluated before every action invocation **and** before every incoming event activation. When evaluated for an event, the `event` variable is available in CEL scope. Use `!has(event) || <condition>` for assertions that should only apply to events. See [Events](../capabilities/events).
     - **`after`** — Middleware steps evaluated after every action invocation, before the result is returned to the LLM. Also evaluated after each incoming event is formatted, before it is committed as input. Use `has(event)` to apply transforms only to event-originated turns.

@@ -15,7 +15,7 @@ The following terms have specific meanings within the Common Agent Specification
 
 **Agent** — A declarative YAML manifest that pairs a system prompt with a set of capabilities, an optional LLM model preference, and a built-in authorisation layer (guardrails, middleware, bindings). Agents are fully defined by static configuration — no code.
 
-**Binding** — An expression on an agent's capability configuration that deterministically injects a parameter value at execution time, bypassing LLM generation entirely. A binding hides the parameter from the LLM-facing schema and seals its action allow list entry. Bindings enforce that sensitive values (user IDs, account identifiers, resource paths) come from trusted task context rather than model output. `require_binding: true` on a parameter is a tool-side validation constraint that makes providing a binding mandatory — the configuration is invalid and the runtime errors if a binding is absent.
+**Binding** — An expression on an agent's capability configuration that deterministically injects a parameter value at execution time, bypassing LLM generation entirely. A binding hides the parameter from the LLM-facing schema and seals its action allow list entry. Bindings enforce that sensitive values (user IDs, account identifiers, resource paths) come from trusted task context rather than model output. `require_binding: true` on a parameter is a tool-side validation constraint that makes providing a binding mandatory — the configuration is invalid if a binding is absent.
 
 **Bundle** — A portable, multi-document YAML file containing a collection of agents, tools, schedules, and triggers. Bundles are the standard format for distributing and importing Common Agent configurations.
 

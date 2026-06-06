@@ -41,7 +41,7 @@ s3:                     # STUB — not implemented in this release
 
 1. **`name`** — Identifies this mount within the workspace.
 2. **`path_prefixes`** — Templates for each scope level. The runtime substitutes `{namespace}`, `{agent}`, and `{task}` tokens during resolution. The resolved prefix is exposed as `mount.prefix` based on the agent's `mount` scope.
-3. **Backend** — Exactly one backend block must be specified. The `gcs` backend is the only implemented backend in this release. The `s3` backend is defined for forward compatibility but must be rejected by the runtime with an error.
+3. **Backend** — Exactly one backend block must be specified.
 
 ## Scope Resolution
 
