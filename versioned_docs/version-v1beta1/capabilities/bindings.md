@@ -33,7 +33,7 @@ Each key MUST correspond to an explicitly declared `parameters` field in the too
 
 Bindings are evaluated **synchronously before** the capability is delegated to the LLM. The evaluated values are merged with any LLM-provided parameters, with bindings taking precedence.
 
-When a parameter has `require_binding: true` in the tool schema, the binding is the only permitted value source. When a parameter has a binding, the runtime MUST reject any attempt by the LLM to override it.
+When a parameter has `require_binding: true` in the tool schema, the binding is the only permitted value source. When a parameter has a binding, any attempt by the LLM to override it is ignored.
 
 ## `require_binding: true`
 

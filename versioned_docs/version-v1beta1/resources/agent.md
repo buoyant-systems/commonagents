@@ -17,17 +17,16 @@ namespace: str
 name: str
 description: str
 prompt: str
-default_message: str | None
 
 model: str | None
 priority: int | None
-memory: "agent" | "user" | "task" | "none"   # default: "task"
+mount: "none" | "task" | "agent" | "workspace"   # default: "none"
 
 limits:
   max_turns: int | None
   max_prompt_tokens: int | None
   max_completion_tokens: int | None
-  max_age: str | None        # Go duration string, e.g. "2h", "30m"
+  max_age: str | None        # duration string, e.g. "2h", "30m"
   max_tool_calls: int | None
 
 parameters:
@@ -79,17 +78,16 @@ exposes:
 
    Example: `"You are helping {context.user.email} with their support tickets."`
 
-6. **`default_message`** — When present, used as the input message when no message is provided at task creation.
 
 ### Model & Priority
 
 7. **`model`** — When present, specifies the model the runtime should use for this agent.
 8. **`priority`** — When present, specifies the scheduling priority for tasks created from this agent.
-9. **`memory`** — Controls the scope of LLM memory. Defaults to `"task"` when absent.
-   - `"agent"` — memory persists across all tasks for this agent.
-   - `"user"` — memory persists per agent+user combination.
-   - `"task"` — memory is scoped to the individual task.
-   - `"none"` — memory functionality is not exposed to the LLM.
+9. **`mount`** — Controls the agent's access to the workspace mount. Defaults to `"none"` when absent. See [Mount](mount).
+   - `"none"` — no mount access. `mount.*` template variables and `mount.read()`/`mount.write()` CEL functions are not available.
+   - `"task"` — mount prefix is scoped to the individual task.
+   - `"agent"` — mount prefix is scoped to the agent (shared across tasks).
+   - `"workspace"` — mount prefix is scoped to the entire workspace.
 
 ### Limits
 
@@ -97,22 +95,22 @@ exposes:
     - `max_turns` — maximum number of LLM turns.
     - `max_prompt_tokens` — cumulative prompt token limit across all LLM calls.
     - `max_completion_tokens` — cumulative completion token limit.
-    - `max_age` — wall-clock duration limit as a Go `time.Duration` string (e.g. `"2h"`, `"30m"`).
+    - `max_age` — wall-clock duration limit (e.g. `"2h"`, `"30m"`).
     - `max_tool_calls` — total number of capability invocations.
 
 ### Parameters
 
-11. **`parameters`** — When present, defines the structured input this agent accepts at task creation. The schema itself is static — no interpolation. Uses [`ParameterSchema`](../reference/parameters) semantics:
+11. **`parameters`** — When present, defines the structured input this agent accepts. The schema itself is static — no interpolation. Uses [`ParameterSchema`](../reference/parameters) semantics:
     - A property **without** a `default` is required — the caller must supply a value.
     - A property **with** a `default` is optional — the default is used when the value is absent.
-    - `require_binding: true` — a **validation constraint**: the parent agent invoking this sub-agent must supply a binding for this parameter. Without a binding the configuration is invalid and the runtime errors. It is the binding that hides the parameter from the LLM.
-    - `message` is a reserved parameter name and may not be used.
+    - `require_binding: true` — a **validation constraint**: the parent agent invoking this sub-agent must supply a binding for this parameter. Without a binding the configuration is invalid. It is the binding that hides the parameter from the LLM.
+    - `message` is a **well-known key** of type `list[ContentPart]`. It is the primary conversational content for a task turn. `message` does not need to be declared in the schema — it is implicitly part of every input. However, `message` MUST be present on every input, either provided explicitly by the caller or resolved from a `default` declared in the schema. If `message` is absent and no default is declared, the input is invalid. An agent MAY declare `message` in its schema solely to specify a `default` value.
 
 ### Capabilities
 
 A **capability** is anything the LLM can invoke during a task, or that can send inbound events to the task. Capabilities come in three forms:
 
-- **Tool actions** — outbound functions backed by a real execution backend (HTTP, CEL, filesystem, MCP, etc.). The LLM never sees the raw tool — only its individual named actions, presented as callable functions.
+- **Tool actions** — outbound functions backed by a real execution backend (HTTP, CEL, MCP, etc.). The LLM never sees the raw tool — only its individual named actions, presented as callable functions.
 - **Tool events** — inbound signals from external platforms. When a tool is declared as a capability, all of its events are automatically subscribed. Events inject input into the task using the tool's `message` template, scoped by the agent's bindings. See [Events](../capabilities/events).
 - **Agent delegation** — another agent exposed as a capability. When invoked, the runtime creates an autonomous child task that runs its own conversation loop and returns its output as a capability result. From the LLM's perspective this is indistinguishable from a tool action.
 
@@ -125,7 +123,7 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
     ```yaml
     include: list[str] | None
     bindings: dict[str, str] | None
-    event_timeout: str | None        # Go duration string — overrides tool event timeout
+    event_timeout: str | None        # duration string — overrides tool event timeout
     before_first: list[MiddlewareStep] | None
     before: list[MiddlewareStep] | None
     after: list[MiddlewareStep] | None
@@ -133,7 +131,7 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
 
     - **`include`** — When present, only the named actions **and events** are active. Actions not in the list are hidden from the LLM; events not in the list are not subscribed. An explicit empty list `[]` hides all actions and subscribes to no events. No interpolation.
     - **`bindings`** — Each value is a full **CEL expression** (not `{...}` interpolation) evaluated at invocation time. Available roots: `context`, `runtime`, `now`. Binding values populate `parameters.*` which the tool's event `receive.filter` expressions can reference to scope which events are routed to this agent. See [Bindings](../capabilities/bindings).
-    - **`event_timeout`** — optional Go `time.Duration` string (e.g. `"24h"`, `"48h"`). Overrides the tool's per-event `timeout` for all events on this capability. The effective timeout is silently clamped to the tool's `max_timeout` when one is declared. If absent, the tool's `timeout` is used as the default. See [Events — Subscription Lifecycle](../capabilities/events#subscription-lifecycle).
+    - **`event_timeout`** — optional duration string (e.g. `"24h"`, `"48h"`). Overrides the tool's per-event `timeout` for all events on this capability. The effective timeout is clamped to the tool's `max_timeout` when one is declared. If absent, the tool's `timeout` is used as the default. See [Events — Subscription Lifecycle](../capabilities/events#subscription-lifecycle).
     - **`before_first`** — Middleware steps evaluated before the first invocation of this capability in a task only.
     - **`before`** — Middleware steps evaluated before every action invocation **and** before every incoming event activation. When evaluated for an event, the `event` variable is available in CEL scope. Use `!has(event) || <condition>` for assertions that should only apply to events. See [Events](../capabilities/events).
     - **`after`** — Middleware steps evaluated after every action invocation, before the result is returned to the LLM. Also evaluated after each incoming event is formatted, before it is committed as input. Use `has(event)` to apply transforms only to event-originated turns.
@@ -150,6 +148,9 @@ When a capability key references another agent, the runtime presents it to the L
 
     Well-known values:
     - `"web-search"` — Enables LLM-native web search grounding.
+    - `"image-generation"` — Enables LLM-native image generation. **Requires** a non-`none` `mount` — generated media is written to mount storage.
+    - `"audio-generation"` — Enables LLM-native audio generation. **Requires** a non-`none` `mount`.
+    - `"video-generation"` — Enables LLM-native video generation. **Requires** a non-`none` `mount`.
 
     A model capability name may not duplicate a key in the `capabilities` map.
 
@@ -173,7 +174,7 @@ prompt: |
   Open pull requests, push commits, and address review feedback.
 
 model: "gemini/gemini-2.5-flash"
-memory: task
+mount: agent     # mount.read()/mount.write() enabled, prefix scoped to agent
 
 limits:
   max_turns: 20

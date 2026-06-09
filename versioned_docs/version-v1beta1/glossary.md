@@ -15,7 +15,7 @@ The following terms have specific meanings within the Common Agent Specification
 
 **Agent** — A declarative YAML manifest that pairs a system prompt with a set of capabilities, an optional LLM model preference, and a built-in authorisation layer (guardrails, middleware, bindings). Agents are fully defined by static configuration — no code.
 
-**Binding** — An expression on an agent's capability configuration that deterministically injects a parameter value at execution time, bypassing LLM generation entirely. A binding hides the parameter from the LLM-facing schema and seals its action allow list entry. Bindings enforce that sensitive values (user IDs, account identifiers, resource paths) come from trusted task context rather than model output. `require_binding: true` on a parameter is a tool-side validation constraint that makes providing a binding mandatory — the configuration is invalid and the runtime errors if a binding is absent.
+**Binding** — An expression on an agent's capability configuration that deterministically injects a parameter value at execution time, bypassing LLM generation entirely. A binding hides the parameter from the LLM-facing schema and seals its action allow list entry. Bindings enforce that sensitive values (user IDs, account identifiers, resource paths) come from trusted task context rather than model output. `require_binding: true` on a parameter is a tool-side validation constraint that makes providing a binding mandatory — the configuration is invalid if a binding is absent.
 
 **Bundle** — A portable, multi-document YAML file containing a collection of agents, tools, schedules, and triggers. Bundles are the standard format for distributing and importing Common Agent configurations.
 
@@ -43,7 +43,9 @@ The following terms have specific meanings within the Common Agent Specification
 
 **Tool** — A YAML manifest declaring one or more outbound actions and optionally one or more inbound events. Tools are the integration layer between agents and external systems. The LLM never sees a tool directly — only its individual named actions, presented as callable functions.
 
-**Tool Runtime** — The execution or delivery mechanism declared within a tool. Action runtimes (in an action's `execute` block: `cel`, `stateless_http`, `stateful_session`, `openapi`, `filesystem`, `mcp`, `kubernetes_job`) determine how outbound action invocations are executed. Receive runtimes (in an event's `receive` block: `webhook`, `subscription`, `poll`) determine how inbound events are delivered. The runtime type is inferred from which sub-key is present.
+**Tool Runtime** — The execution or delivery mechanism declared within a tool. Action runtimes (in an action's `execute` block: `cel`, `stateless_http`, `stateful_session`, `openapi`, `mcp`, `kubernetes_job`) determine how outbound action invocations are executed. Receive runtimes (in an event's `receive` block: `webhook`, `subscription`, `poll`) determine how inbound events are delivered. The runtime type is inferred from which sub-key is present.
+
+**Mount** — Workspace-level cloud storage configuration that enables agents to read and write persistent data. An agent's `mount` scope (`none`, `task`, `agent`, `workspace`) determines the storage prefix. When mount is non-`none`, `mount.*` template variables and `mount.read()`/`mount.write()` CEL functions are available.
 
 **Trigger** — A persistent resource that automatically creates a new task for an agent when an inbound event matches its conditions. Where a Schedule fires on a time cadence, a Trigger fires on an external signal. Triggers operate on raw event payloads and bypass the action allow list — they are for cold-starting new conversations, not continuing existing ones.
 

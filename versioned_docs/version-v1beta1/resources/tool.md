@@ -31,17 +31,15 @@ actions:
       stateless_http: object | None
       stateful_session: object | None
       openapi: object | None
-      filesystem: object | None
       mcp: object | None
       kubernetes_job: object | None
-    filesystem: str | None  # shorthand for well-known filesystem actions
 
 events:
   - name: str
     description: str | None
     message: str
-    timeout: str | None         # Go duration string — default subscription duration
-    max_timeout: str | None     # Go duration string — hard cap on subscription duration
+    timeout: str | None         # duration string — default subscription duration
+    max_timeout: str | None     # duration string — hard cap on subscription duration
     parameters: JSON_SCHEMA | None
     receive:
       webhook:
@@ -54,7 +52,6 @@ events:
 stateless_http: object | None
 stateful_session: object | None
 openapi: object | None
-filesystem: object | None
 mcp: object | None
 ```
 
@@ -81,7 +78,7 @@ mcp: object | None
 
    - A property **without** a `default` is required — the caller must supply a value.
    - A property **with** a `default` is optional — the default is used when the value is absent.
-   - `require_binding: true` — a **validation constraint**: any agent using this tool must supply a binding for this parameter. Without a binding the configuration is invalid and the runtime errors. It is the **binding** (not this flag) that hides the parameter from the LLM and seals its allow list entry. Parameters used in event `receive.filter` expressions are good candidates for `require_binding: true`, because it ensures the binding (and therefore the routing value) is always present.
+   - `require_binding: true` — a **validation constraint**: any agent using this tool must supply a binding for this parameter. Without a binding the configuration is invalid. It is the **binding** (not this flag) that hides the parameter from the LLM and seals its allow list entry. Parameters used in event `receive.filter` expressions are good candidates for `require_binding: true`, because it ensures the binding (and therefore the routing value) is always present.
 
    See [Parameter Pipeline](../reference/parameters) for how values flow from settings → bindings → LLM → interpolation.
 
@@ -91,7 +88,6 @@ mcp: object | None
    - A `name` and `description` identifying it to the LLM.
    - An optional `parameters` schema (same semantics as the tool-level parameters).
    - Exactly one runtime backend declared in the `execute` block.
-   - Optionally, a `filesystem` shorthand string in place of an `execute` block, deriving from a well-known filesystem action.
 
    The runtime presents individual actions — not the tool itself — to the LLM as callable functions.
 
@@ -106,8 +102,8 @@ mcp: object | None
    - **`name`** — unique identifier within the tool.
    - **`description`** — optional; shown in the UI but **not surfaced to the LLM**.
    - **`message`** — string template using `{event.payload.*}` interpolation from the raw event payload. Produces the input injected into the task when this event arrives.
-   - **`timeout`** — optional Go `time.Duration` string (e.g. `"24h"`, `"168h"`). Defines the default subscription duration for this event — how long a task remains subscribed after its last FSM step. When the timeout expires, the subscription is removed but the task is not deleted or errored. If absent, the event has no default timeout. Agents MAY override this value via the capability's `timeout` field.
-   - **`max_timeout`** — optional Go `time.Duration` string. The hard maximum subscription duration for this event. Agent-specified timeouts are silently clamped to this value. If absent, there is no hard cap. When both `timeout` and `max_timeout` are set, `max_timeout` MUST be ≥ `timeout` — implementations MUST reject tool definitions that violate this. A runtime implementation MAY also enforce its own maximum timeout independent of the tool declaration.
+   - **`timeout`** — optional duration string (e.g. `"24h"`, `"168h"`). Defines the default subscription duration for this event — how long a task remains subscribed after its last activity. When the timeout expires, the subscription is removed but the task is not deleted or errored. If absent, the event has no default timeout. Agents MAY override this value via the capability's `timeout` field.
+   - **`max_timeout`** — optional duration string. The hard maximum subscription duration for this event. Agent-specified timeouts are clamped to this value. If absent, there is no hard cap. When both `timeout` and `max_timeout` are set, `max_timeout` MUST be ≥ `timeout`. A runtime MAY also enforce its own maximum timeout independent of the tool declaration.
    - **`parameters`** — JSON Schema defining additional parameters specific to this event's `receive.filter`. These are populated by agent bindings. They share the same allow list namespace as root and per-action parameters: if a per-event parameter shares a name with a per-action parameter, LLM action calls that resolve that name also populate the per-event parameter's allow list entry.
    - **`receive`** — the inbound delivery mechanism. Exactly one sub-type key is present. The sub-type's optional `filter` CEL field references `parameters.*` resolved against the tool-wide action allow list. The `webhook` sub-type additionally supports an optional `secret` field — a `{settings.*}` expression resolving to an HMAC secret. When present, the runtime validates the inbound webhook signature before evaluating the filter. See [Tool Runtimes](tool-runtimes#receive-runtimes) and [Events](../capabilities/events).
 
@@ -126,6 +122,9 @@ The following interpolation roots are available in **all** execution spec string
 | `{runtime.dashboard_url}` | Runtime dashboard URL |
 | `{runtime.api_root}` | Runtime API root URL |
 | `{agent.<key>}` | Agent metadata: `agent.name`, `agent.namespace` |
+| `{mount.bucket}` | Mount bucket name. Only present when agent `mount` is non-`none`. See [Mount](mount). |
+| `{mount.prefix}` | Mount scoped prefix. Only present when agent `mount` is non-`none`. |
+| `{mount.backend}` | Mount backend type (`gcs` or `s3`). Only present when agent `mount` is non-`none`. |
 | `auth.<provider>()` | Auth token from a registered provider (tool scope only) |
 
 The `cel` backend is the exception: its `expression` field is a **full CEL expression**, not `{...}` interpolation (see below).
@@ -155,15 +154,6 @@ execute:
 
 The `create`, `initialize`, and `teardown` HTTP call fields all support `{expression}` interpolation. The `execute` sub-block also supports full interpolation. `{session.<key>}` references are deferred until after the session is created.
 
-#### `filesystem`
-
-The filesystem configuration fields support `{expression}` interpolation:
-
-| Backend | Interpolated fields |
-|---|---|
-| `github` | `token`, `owner`, `repo`, `branch`, `destination_branch` |
-| `git` | `auth_token`, `repo_url`, `branch`, `destination_branch` |
-
 #### `kubernetes_job`
 
 `namespace` and all string values within `spec` support `{expression}` interpolation.
@@ -174,7 +164,7 @@ These backends derive their execution spec from an external source. Interpolatio
 
 ### Top-Level Runtime Blocks
 
-When top-level runtime configuration blocks are present (e.g. `stateless_http`, `filesystem`, `mcp`), they serve as shared configuration that individual action `execute` blocks inherit. The same interpolation roots apply.
+When top-level runtime configuration blocks are present (e.g. `stateless_http`, `mcp`), they serve as shared configuration that individual action `execute` blocks inherit. The same interpolation roots apply.
 
 ## Example
 

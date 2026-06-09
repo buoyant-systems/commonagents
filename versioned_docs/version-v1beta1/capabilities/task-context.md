@@ -13,7 +13,7 @@ A task is a stateful, persistent conversation session. It does not terminate whe
 
 A task terminates outright in two cases:
 
-- An **unrecoverable error** occurs (unreachable endpoint, configuration bug, infrastructure failure).
+- An **unrecoverable error** occurs (unreachable endpoint, invalid configuration).
 - A configured **limit** is exceeded (`max_turns`, `max_prompt_tokens`, `max_age`, etc.). When a limit is exceeded, the runtime terminates the task with reason `limit_exceeded`.
 
 Operational errors — HTTP failures, tool-level errors — are reported back to the LLM as capability results and do not terminate the task.
@@ -51,10 +51,10 @@ context:
 
   capabilities:
     _meta:
-      invocations: list[str]    # Ordered compiled function names, one per invocation
+      invocations: list[str]    # Ordered function names, one per invocation
       count: int
       delegation_count: int
-    <function>:                 # Keyed by compiled function name (see below)
+    <function>:                 # Keyed by function name (see below)
       count_successful: int
       count_errored: int
       count_restricted: int
@@ -71,10 +71,10 @@ context:
 
 `input` and `output` are lists of `TaskIO` objects. Each `TaskIO` contains:
 
-- `message` — a list of content parts (the conversational text)
+- `message` — a list of content parts (the conversational text). This is a **well-known key** that MUST be present on every input.
 - Dynamic keys from the agent's `parameters` schema (for input entries) or `exposes` schema (for output entries)
 
-The initial task input (`input[0]`) contains validated agent parameters as dynamic keys. CEL bindings reference them via:
+Each input turn carries its own snapshot of `message` and parameter values. CEL bindings reference them via:
 
 ```cel
 context.input[0].ticket_id
@@ -83,7 +83,7 @@ context.input[0].project_name
 
 ## Capability Keys
 
-Capabilities are keyed by their **compiled function name** — the exact identifier the LLM uses when invoking the capability. Derived as follows:
+Capabilities are keyed by their **function name** — the exact identifier the LLM uses when invoking the capability. Derived as follows:
 
 - **Single-capability tool** — sanitized agent capability reference (e.g. agent ref `slack-post` → key `slack_post`)
 - **Multi-capability tool** — sanitized ref + sanitized capability name (e.g. ref `github-file`, capability `read-chunk` → key `github_file_read_chunk`)
@@ -140,7 +140,8 @@ The `context` variable is available in:
 | Guardrail `before` steps | `context`, `input`, `now` |
 | Guardrail `after` steps | `context`, `output`, `now` |
 | Agent `bindings` | `context` |
-| CEL tool `expression` | `context`, `input`, `now` |
+| CEL tool `expression` | `context`, `input`, `now`, `mount.read()`, `mount.write()` |
 | Agent prompt interpolation | `context` |
+| LLM capability script | `<capability>()`, `file()` — no `context` access |
 
 See [CEL Reference](../reference/cel) for the full list of available functions and macros.
