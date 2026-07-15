@@ -143,49 +143,16 @@ Tool event subscriptions resume **existing tasks**. Triggers act on raw event pa
 
 ## Subscription Lifecycle
 
-Event subscriptions have a defined lifecycle that controls when a task starts and stops receiving events.
+A subscription's lifetime is the task's lifetime — there is no separate expiry to configure or reason about.
 
-### When Subscriptions Are Active
+A subscription is created when a task starts and the agent's capabilities include a tool with events, and it is restored automatically whenever the task is rehydrated (for example after the runtime scales to zero). It is removed only when:
 
-A subscription is created when a task starts and the agent's capabilities include a tool with events. It is removed when any of the following occurs:
-
-- The task reaches a terminal state (error).
+- The task reaches a terminal phase.
 - The task is deleted.
-- The task is interrupted.
-- The subscription's timeout expires.
 
-When a task is interrupted, its subscriptions are removed immediately. However, the subscriptions are **automatically restored** when the task resumes processing (e.g. when it receives new user input and begins its next step). This prevents events from piling up during an interrupt, while allowing the task to resume event-driven behaviour naturally once it becomes active again.
+An idle task keeps receiving events indefinitely — inbound events are a first-class way to resume a conversation (warm resume), and a long-quiet task waking to a webhook is expected behaviour, not a leak. Interrupting a task does not remove its subscriptions: the task returns to idle, where event-driven inputs remain live. Runtimes bound the overall lifetime through the task lifecycle itself (for example an idle-lifespan policy that completes long-dormant tasks), never through per-subscription timers.
 
-### Timeouts
-
-Each event may declare a `timeout` (default subscription duration) and a `max_timeout` (hard cap). The agent may override the default via the capability's `event_timeout` field.
-
-The effective timeout is computed as:
-
-```
-effective = clamp(
-    agent.capabilities[tool].event_timeout  ??  tool.events[name].timeout  ??  ∞,
-    max = tool.events[name].max_timeout  ??  ∞
-)
-```
-
-When the effective timeout is finite, the runtime tracks a `last_activity_at` timestamp per subscription. Activity is defined as **any processing step** — any state transition within the task (input ingestion, LLM generation, capability execution, middleware evaluation, etc.). The timeout clock resets on each step. When `now - last_activity_at > effective_timeout`, the subscription is removed — but the task is not deleted or errored.
-
-A runtime implementation MAY also enforce its own maximum timeout independent of the tool and agent declarations.
-
-```yaml
-# Tool declares defaults and caps
-events:
-  - name: comment
-    timeout: "72h"         # default: 3 days
-    max_timeout: "168h"    # cap: 7 days
-    ...
-
-# Agent overrides
-capabilities:
-  github-pr:
-    event_timeout: "48h"         # effective: 48h (within cap)
-```
+In order to unsubscribe a task, transition it to a terminal phase.
 
 ### Webhook Signature Verification
 
@@ -223,7 +190,6 @@ capabilities:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
-    event_timeout: "48h"
     include: [create_pr, comment, review]
     before:
       - assert: "!has(event) || event.payload.comment.user.login != 'agentmesh-bot'"

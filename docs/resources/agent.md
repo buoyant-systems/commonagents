@@ -43,7 +43,6 @@ capabilities:
     # Capability (object with at least one field):
     #     include: list[str] | None
     #     bindings: dict[str, str] | None
-    #     event_timeout: str | None
     #     before_first: list[MiddlewareStep] | None
     #     before: list[MiddlewareStep] | None
     #     after: list[MiddlewareStep] | None
@@ -123,7 +122,6 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
     ```yaml
     include: list[str] | None
     bindings: dict[str, str] | None
-    event_timeout: str | None        # duration string — overrides tool event timeout
     before_first: list[MiddlewareStep] | None
     before: list[MiddlewareStep] | None
     after: list[MiddlewareStep] | None
@@ -131,7 +129,6 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
 
     - **`include`** — When present, only the named actions **and events** are active. Actions not in the list are hidden from the LLM; events not in the list are not subscribed. An explicit empty list `[]` hides all actions and subscribes to no events. No interpolation.
     - **`bindings`** — Each value is a full **CEL expression** (not `{...}` interpolation) evaluated at invocation time. Available roots: `context`, `runtime`, `now`. Binding values populate `parameters.*` which the tool's event `receive.filter` expressions can reference to scope which events are routed to this agent. See [Bindings](../capabilities/bindings).
-    - **`event_timeout`** — optional duration string (e.g. `"24h"`, `"48h"`). Overrides the tool's per-event `timeout` for all events on this capability. The effective timeout is clamped to the tool's `max_timeout` when one is declared. If absent, the tool's `timeout` is used as the default. See [Events — Subscription Lifecycle](../capabilities/events#subscription-lifecycle).
     - **`before_first`** — Middleware steps evaluated before the first invocation of this capability in a task only.
     - **`before`** — Middleware steps evaluated before every action invocation **and** before every incoming event activation. When evaluated for an event, the `event` variable is available in CEL scope. Use `!has(event) || <condition>` for assertions that should only apply to events. See [Events](../capabilities/events).
     - **`after`** — Middleware steps evaluated after every action invocation, before the result is returned to the LLM. Also evaluated after each incoming event is formatted, before it is committed as input. Use `has(event)` to apply transforms only to event-originated turns.
