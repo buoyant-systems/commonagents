@@ -9,14 +9,33 @@ description: Task lifecycle states, termination conditions, and the task context
 
 ## Task Lifecycle
 
-A task is a stateful, persistent conversation session. It does not terminate when the agent responds — instead it returns to an **idle state** and waits for further input. Exactly what happens to an idle task is implementation-defined: a runtime may continue accepting new messages indefinitely, enforce an inactivity timeout, or close the task after a fixed number of messages.
+A task is a stateful, persistent conversation session. It does not terminate when the agent responds — instead it returns to an **idle** phase and waits for further input.
 
-A task terminates outright in two cases:
+### Phases
 
-- An **unrecoverable error** occurs (unreachable endpoint, invalid configuration).
-- A configured **limit** is exceeded (`max_turns`, `max_prompt_tokens`, `max_age`, etc.). When a limit is exceeded, the runtime terminates the task with reason `limit_exceeded`.
+A task's `status.phase` is one of:
 
-Operational errors — HTTP failures, tool-level errors — are reported back to the LLM as capability results and do not terminate the task.
+| Phase | Meaning |
+|---|---|
+| `idle` | Between turns, waiting for the next input message. |
+| `processing` | Mid-turn — actively executing, or yielded on one or more asynchronous operations. |
+| `terminal` | Finished permanently. `status.terminal_reason` is set and the task MUST NOT be mutated further. |
+
+An `idle` task may accept new input. Exactly how long a runtime keeps an idle task open before completing it is implementation-defined — a runtime may keep it open indefinitely or enforce an inactivity lifespan.
+
+### Termination
+
+When `phase` is `terminal`, `status.terminal_reason` explains why. It is one of:
+
+| `terminal_reason` | Meaning |
+|---|---|
+| `completed` | The task was finished by an explicit, positive action — never as a side effect of ordinary processing. A task that has simply delivered its output goes `idle`, not `terminal`. |
+| `errored` | The task halted on an unrecoverable error — an unreachable endpoint, an invalid configuration, or an exceeded resource limit (`max_turns`, `max_prompt_tokens`, `max_completion_tokens`, `max_age`, `max_tool_calls`). Details are recorded in the task's error field. |
+| `restricted` | The task was permanently locked by a guardrail or middleware `lock_task` outcome. |
+
+`terminal_reason` MUST be `null` for any non-terminal task.
+
+Operational errors — HTTP failures, individual tool-level errors — are reported back to the LLM as capability results and do **not** terminate the task.
 
 ## Context Object
 

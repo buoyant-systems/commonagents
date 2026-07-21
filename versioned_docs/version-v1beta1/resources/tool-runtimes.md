@@ -57,28 +57,86 @@ The CEL expression has access to `context`, `input`, and `now`. See [CEL Referen
 
 Issues HTTP requests with no cross-request session state. Each action invocation is independent.
 
-```yaml
-stateless_http:
-  method: GET | POST | PUT | PATCH | DELETE
-  url: str               # supports {parameter} interpolation
-  headers: dict[str, str] | None
-  body: object | None    # serialised to JSON
-  response_path: str | None  # JSONPath to extract from response
-```
+Each action's `execute` block:
 
-**Example:**
 ```yaml
 execute:
   stateless_http:
-    method: POST
-    url: "https://api.example.com/v1/messages"
-    headers:
-      Authorization: "Bearer {settings.api_key}"
-      Content-Type: "application/json"
-    body:
-      text: "{parameters.message}"
-      channel: "{parameters.channel}"
+    method: GET | POST | PUT | PATCH | DELETE
+    url: str               # supports {parameter} interpolation; MAY be a relative path (see base_url)
+    headers: dict[str, str] | None
+    json: object | None    # structured request body, serialised to JSON by the runtime
+                           # (sets Content-Type: application/json). Interpolated values are escaped.
+    body: str | None       # raw string request body, interpolated as-is. Mutually exclusive with json.
+    response_path: str | None  # JSONPath to extract from response
 ```
+
+Use `json` for structured request bodies — the runtime serialises the object and escapes interpolated `{parameter}` values, so a value containing quotes or newlines is safe. Use `body` only when a pre-formatted raw string is required. `json` and `body` MUST NOT both be set on the same action.
+
+**Shared configuration.** A tool MAY declare a top-level `stateless_http` block (a sibling of `actions`) whose values apply to every action:
+
+```yaml
+stateless_http:
+  base_url: str | None            # prepended to every action url that is a relative path
+  headers: dict[str, str] | None  # merged into every action's headers
+```
+
+When an action `url` is a relative path, the runtime prepends `base_url`; a `url` that already starts with `http://` or `https://` is used unchanged. This lets a tool declare its host, common prefix, and auth header once and give each action a short relative path.
+
+**Example (shared `base_url` + a `json` body):**
+```yaml
+actions:
+  - name: send_message
+    execute:
+      stateless_http:
+        method: POST
+        url: /v1/messages          # resolves against base_url
+        json:
+          text: "{parameters.message}"
+          channel: "{parameters.channel}"
+stateless_http:
+  base_url: "https://api.example.com"
+  headers:
+    Authorization: "Bearer {settings.api_key}"
+```
+
+#### Files and the mount
+
+Both HTTP runtimes move file content directly between the agent's [mount](mount) and a remote API — the bytes never pass through the model's context or the persisted task result, only a `file` reference does (see [Content](../capabilities/content)). An agent MUST have a non-`none` `mount` scope for either direction; without one the runtime returns an operational error to the LLM.
+
+**Download — write a response body to the mount.** Set `response: file` on an action's `execute.stateless_http` to declare that the response body is a file. Whether an endpoint returns a file is decided by the schema — response `Content-Type` is never sniffed.
+
+```yaml
+execute:
+  stateless_http:
+    method: GET
+    url: /files/{parameters.file_id}/content
+    response: file        # stream the body into the mount instead of returning it inline
+```
+
+Instead of an inline result, the action returns a file **handle** — `{ file, mime_type, size_bytes, hash }` — where `file` is a `file:{name}` reference token and `hash` is the backend-certified content hash. The body never enters the tool result and the download attaches nothing to the model's context. The file keeps the server's `Content-Disposition` name when present (a re-download overwrites it); an unnamed response is named `downloaded_<unique8><ext>`. The handle chains like any file result: into a later action's `type: file` parameter, into a CEL tool's `mount.*` functions, or positionally in an LLM script. Without `response: file` the body is always an inline result.
+
+**Upload — stream a mount file to a remote API.** Add an `upload` block to an action's `execute.stateless_http` to send a mount file to a remote API using a resumable, chunked protocol. The action's own `method`/`url`/`json`/`headers` define the *session-creation* request; the `upload` block drives the transfer that follows.
+
+```yaml
+execute:
+  stateless_http:
+    method: POST                       # 1. session-creation request
+    url: /upload/sessions
+    json: { name: "{parameters.filename}" }
+    upload:
+      extract:                         # 2. where the upload URL is in the creation response
+        json: str | None               #    JMESPath on the response body, OR
+        header: str | None             #    a response header name — exactly one
+      content: "{parameters.file}"     # 3. a `type: file` parameter carrying the file to upload
+      chunk_size: int                  # 4. bytes per chunk
+      response: file | None            # 5. optional: treat the completion response as a file
+      headers: dict[str, str] | None   #    headers sent ONLY on the chunk PUTs
+```
+
+The runtime: (1) issues the session-creation request; (2) extracts the upload URL from that response via `upload.extract` (exactly one of `json` or `header`); (3) resolves `upload.content` — a `{parameters.*}` reference to a `type: file` parameter — to the file's bytes on the mount; (4) PUTs the content to the upload URL in `chunk_size` byte ranges with `Content-Range: bytes {start}-{end}/{total}` headers, continuing while the API answers `308` or `202` and completing on `200`/`201`; (5) returns the completion response as the action result — or, when `upload.response: file` is set, streams that response back into the mount as a new file handle, so an "upload a file, get a file back" API (e.g. a document converter) chains like any file producer.
+
+Chunk PUTs use **only** `upload.headers` — they deliberately do not inherit tool- or action-level headers, because APIs disagree on what a chunk request needs (e.g. Google Drive requires `Authorization` on chunks; OneDrive's pre-authorised upload URL rejects it). Total size and per-chunk / total upload timeouts are bounded by runtime configuration.
 
 ### `stateful_session`
 
@@ -102,6 +160,8 @@ stateful_session:
     method: DELETE
     url: str
 ```
+
+A stateful-session `execute` block supports the same file handling as `stateless_http`: `response: file` streams the response body into the agent's mount and returns a file handle, and an `upload` block streams a mount file to a remote API. See [Files and the mount](#files-and-the-mount).
 
 ### `openapi`
 

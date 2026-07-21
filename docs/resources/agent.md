@@ -90,7 +90,7 @@ exposes:
 
 ### Limits
 
-10. **`limits`** — When present, defines resource limits for tasks created from this agent. When a limit is exceeded, the runtime terminates the task with reason `limit_exceeded`.
+10. **`limits`** — When present, defines resource limits for tasks created from this agent. When a limit is exceeded, the runtime terminates the task with `terminal_reason: errored` (see [Task Lifecycle](../capabilities/task-context#termination)).
     - `max_turns` — maximum number of LLM turns.
     - `max_prompt_tokens` — cumulative prompt token limit across all LLM calls.
     - `max_completion_tokens` — cumulative completion token limit.

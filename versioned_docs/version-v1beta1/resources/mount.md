@@ -72,8 +72,9 @@ When the agent's `mount` scope is non-`none`, the following functions are availa
 
 | Function | Description |
 |----------|-------------|
-| `mount.read(path)` | Reads the contents of a file relative to `mount.prefix` |
+| `mount.read(path)` | Reads a file relative to `mount.prefix`. When the returned handle is part of the action result it is delivered to the model as an attachment on the next request. |
 | `mount.write(path, content)` | Writes content to a file relative to `mount.prefix`. Returns the written content. |
+| `mount.list()` | Lists the files under `mount.prefix` as sorted `file:{name}` reference tokens — including files the user uploaded to the task and files produced in earlier turns. |
 
 These functions are **only** available in CEL tool `expression` fields — not in middleware, bindings, or guardrails. Paths containing `../` are rejected.
 
