@@ -25,10 +25,12 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'capabilities/task-context',
+        'capabilities/task-io',
         'capabilities/content',
         'capabilities/middleware',
         'capabilities/bindings',
         'capabilities/events',
+        'capabilities/task-status',
       ],
     },
     'glossary',

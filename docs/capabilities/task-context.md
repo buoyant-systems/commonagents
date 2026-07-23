@@ -30,7 +30,7 @@ When `phase` is `terminal`, `status.terminal_reason` explains why. It is one of:
 | `terminal_reason` | Meaning |
 |---|---|
 | `completed` | The task was finished by an explicit, positive action — never as a side effect of ordinary processing. A task that has simply delivered its output goes `idle`, not `terminal`. |
-| `errored` | The task halted on an unrecoverable error — an unreachable endpoint, an invalid configuration, or an exceeded resource limit (`max_turns`, `max_prompt_tokens`, `max_completion_tokens`, `max_age`, `max_tool_calls`). Details are recorded in the task's error field. |
+| `errored` | The task halted on an unrecoverable error — an unreachable endpoint, an invalid configuration, or an exceeded resource limit (`max_turns`, `max_prompt_tokens`, `max_completion_tokens`, `max_age`, `max_tool_calls`). A runtime records error detail internally; how much of it is exposed, and to whom, is implementation-defined. |
 | `restricted` | The task was permanently locked by a guardrail or middleware `lock_task` outcome. |
 
 `terminal_reason` MUST be `null` for any non-terminal task.
@@ -88,12 +88,9 @@ context:
 
 ## TaskIO
 
-`input` and `output` are lists of `TaskIO` objects. Each `TaskIO` contains:
+`input` and `output` are lists of [TaskIO](./task-io) objects — the human-facing shape of one conversational message: a well-known `message` key (a list of content parts) plus dynamic keys from the agent's `parameters` schema (input entries) or `exposes` schema (output entries).
 
-- `message` — a list of content parts (the conversational text). This is a **well-known key** that MUST be present on every input.
-- Dynamic keys from the agent's `parameters` schema (for input entries) or `exposes` schema (for output entries)
-
-Each input turn carries its own snapshot of `message` and parameter values. CEL bindings reference them via:
+Each input entry carries its own snapshot of `message` and parameter values. CEL bindings reference them via:
 
 ```cel
 context.input[0].ticket_id
