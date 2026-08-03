@@ -113,7 +113,7 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
 - **Tool events** — inbound signals from external platforms. When a tool is declared as a capability, all of its events are automatically subscribed. Events inject input into the task using the tool's `message` template, scoped by the agent's bindings. See [Events](../capabilities/events).
 - **Agent delegation** — another agent exposed as a capability. When invoked, the runtime creates an autonomous child task that runs its own conversation loop and returns its output as a capability result. From the LLM's perspective this is indistinguishable from a tool action.
 
-12. **`capabilities`** — Defines the capabilities available to this agent. Each key references a tool or another agent. Each value is either `"*"` or a `Capability` object.
+12. **`capabilities`** — Defines the capabilities available to this agent. Each key references a tool or another agent, in one of the forms given in [References and Versions](../concepts#references-and-versions), and MAY carry an `@<version>` suffix to pin that capability to exact content rather than to whatever is current. Each value is either `"*"` or a `Capability` object.
 
     **`"*"` (wildcard)** — All actions are visible to the LLM and all events are subscribed, with no middleware and no bindings.
 

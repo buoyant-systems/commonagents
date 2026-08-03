@@ -21,6 +21,33 @@ Everything in the specification is defined as a **YAML manifest**. There are fiv
 
 Agents and tools are the core pair. An agent *uses* tools; tools don't know about agents. The same tool can be shared across many agents.
 
+## References and Versions
+
+Resources refer to each other by name. An agent's `capabilities` keys name the tools and other agents it uses; nothing else in a manifest points at a resource.
+
+A resource is identified by its namespace and its name together. A name is unique within its namespace, and one namespace may not hold an agent and a tool sharing a name.
+
+- A tool is referenced as `{namespace}/{tool_name}`.
+- An agent is referenced as `{namespace}/{agent_name}`, or equivalently as `agent://{namespace}/{agent_name}`. A runtime MAY additionally interpret `agent://{hostname}/{namespace}/{agent_name}` as an agent hosted elsewhere.
+
+A reference that omits the namespace resolves within the manifest's own namespace.
+
+### Pinning a version
+
+Manifests are editable, and a task can run for a long time after it starts. A reference MAY therefore carry a **version** suffix, naming exact content instead of whatever happens to be current:
+
+```yaml
+capabilities:
+  "agent://research/summariser@9f2c4e...": "*"
+```
+
+- A **version** is the SHA-256, in lower-case hexadecimal, of the canonical serialisation of that resource's spec. It is never abbreviated.
+- A version is immutable: the same version always denotes the same content. It is not ordered — two versions tell you that content differs, never which came first.
+- A reference carrying no suffix means "whatever is current at the moment this reference is resolved".
+- A runtime resolves references **once, when a task is created**, and runs the resolved content for that task's whole life. Editing a manifest therefore never changes what an already-running task does.
+
+The `@` is not part of a name: names may not contain one, and a reference is a name once its suffix is removed. A runtime MAY accept other ways of addressing a version in this position, but only the SHA-256 form is portable.
+
 ## Tasks and the LLM Loop
 
 When an agent is invoked, the runtime creates a **Task** — a stateful, persistent conversation session. A task does not end when the agent responds; it reaches an **idle state** and waits for further input.
