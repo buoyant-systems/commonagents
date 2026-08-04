@@ -88,7 +88,7 @@ context:
 
 ## TaskIO
 
-`input` and `output` are lists of [TaskIO](./task-io) objects — the human-facing shape of one conversational message: a well-known `message` key (a list of content parts) plus dynamic keys from the agent's `parameters` schema (input entries) or `exposes` schema (output entries).
+`input` and `output` are lists of [TaskIO](./task-io) objects — the human-facing shape of one conversational message: the well-known `message`, `received_at` and `committed_at` keys plus dynamic keys from the agent's `parameters` schema (input entries) or `exposes` schema (output entries).
 
 Each input entry carries its own snapshot of `message` and parameter values. CEL bindings reference them via:
 
