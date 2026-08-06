@@ -144,15 +144,19 @@ When a capability key references another agent, the runtime presents it to the L
 
 ### Model Capabilities
 
-13. **`model_capabilities`** — When present, these identifiers are injected into the LLM API request as provider-specific built-in tools.
+13. **`model_capabilities`** — Model-native capabilities the agent can use. They cover both model-internal features, like web-search, and input and output modalities.
 
-    Well-known values:
     - `"web-search"` — Enables LLM-native web search grounding.
     - `"image-generation"` — Enables LLM-native image generation. **Requires** a non-`none` `mount` — generated media is written to mount storage.
     - `"audio-generation"` — Enables LLM-native audio generation. **Requires** a non-`none` `mount`.
     - `"video-generation"` — Enables LLM-native video generation. **Requires** a non-`none` `mount`.
+    - `"image-understanding"` — Enables the agent to directly receive images as input. Note that the model doesn't need to understand images to be able to interact with them (it can still move them, and pass them through normal capabilities).
+    - `"audio-understanding"` — Enables the agent to directly receive audio as input.
+    - `"video-understanding"` — Enables the agent to directly receive video as input.
+    - `"pdf-understanding"` — Enables the agent to directly receive PDF (`application/pdf`) files as input.
+    - `"file-understanding"` — Enables the agent to directly receive file input of any MIME type, not only the recognised media modalities. This is an escape hatch for models known to accept arbitrary attachments; honoured only where the wire protocol can carry arbitrary bytes.
 
-    A model capability name may not duplicate a key in the `capabilities` map.
+    A model capability name may not duplicate a key in the `capabilities` map. If a runtime or model doesn't support a particular model capability, it MAY reject agent manifests at write time, and MUST warn at task creation time.  
 
 ### Guardrails
 
