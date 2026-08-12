@@ -27,7 +27,7 @@ Resources refer to each other by name. An agent's `capabilities` keys name the t
 
 A resource is identified by its namespace and its name together. A name is unique within its namespace, and one namespace may not hold an agent and a tool sharing a name.
 
-A name is lower-case letters, digits and dashes, starts and ends with a letter or digit, and is at most 63 characters — `[a-z0-9]([-a-z0-9]*[a-z0-9])?`. The form is narrow on purpose: a name has to survive being used as an identifier by whatever a runtime is built on. A runtime storing resources as Kubernetes objects uses the name as the object's `metadata.name`, and every runtime folds the name into the function name the LLM sees. `input` and `llm` are additionally reserved, because each already names part of the task context that a capability of the same name would shadow.
+A name is lower-case letters, digits and single dashes, starts and ends with a letter or digit, and is at most 63 characters — `[a-z0-9]+(-[a-z0-9]+)*`. The form is narrow on purpose: a name has to survive being used as an identifier by whatever a runtime is built on. A runtime storing resources as Kubernetes objects uses the name as the object's `metadata.name`, and every runtime folds the name into the function name the LLM sees. `input` and `llm` are additionally reserved, because each already names part of the task context that a capability of the same name would shadow.
 
 - A tool is referenced as `{namespace}/{tool_name}`.
 - An agent is referenced as `{namespace}/{agent_name}`, or equivalently as `agent://{namespace}/{agent_name}`. A runtime MAY additionally interpret `agent://{hostname}/{namespace}/{agent_name}` as an agent hosted elsewhere.
