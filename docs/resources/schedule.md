@@ -38,16 +38,16 @@ enabled: bool
 
 ## Status
 
-The runtime maintains the following read-only status fields on the schedule, not set by the caller:
+The runtime maintains the following read-only status field on the schedule, not set by the caller:
 
 ```yaml
 status:
-  last_triggered_at: str | None    # UTC ISO 8601
-  last_task_id: str | None
   next_trigger_at: str | None      # UTC ISO 8601
-  consecutive_failures: int
-  last_error: str | None
 ```
+
+Status describes what is true of the schedule now. `next_trigger_at` is derived from `cron`, `timezone` and `enabled`, so a schedule whose next run disagrees with its cadence cannot exist.
+
+What a schedule has *done* — when it last fired, which task that produced, why an attempt failed — is deliberately not here. Those accumulate without the schedule changing, so a status carrying them would be a field whose value moves when nothing about the resource has. How an implementation records execution history, and whether it exposes one at all, is outside this specification.
 
 ## Overlapping Execution
 

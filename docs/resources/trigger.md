@@ -42,16 +42,15 @@ enabled: bool
 
 ## Status
 
-The runtime maintains the following read-only status fields on the trigger, not set by the caller:
+A trigger has no status.
 
-```yaml
-status:
-  last_triggered_at: str | None    # UTC ISO 8601
-  last_task_id: str | None
-  total_triggers: int
-  consecutive_failures: int
-  last_error: str | None
-```
+Status describes what is true of a resource now, and a trigger has nothing of that
+kind: unlike a [schedule](schedule.md), it has no cadence, so there is no next
+firing to compute. What a trigger has *done* — when it last fired, how many times,
+which tasks it produced, why an attempt failed — accumulates without the trigger
+changing, so a status carrying it would be a field whose value moves when nothing
+about the resource has. How an implementation records execution history, and
+whether it exposes one at all, is outside this specification.
 
 ## Trigger vs Event Subscription
 
