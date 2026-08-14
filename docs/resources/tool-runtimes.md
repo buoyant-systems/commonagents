@@ -102,7 +102,7 @@ stateless_http:
 
 #### Files and the mount
 
-Both HTTP runtimes move file content directly between the agent's [mount](mount) and a remote API — the bytes never pass through the model's context or the persisted task result, only a `file` reference does (see [Content](../capabilities/content)). An agent MUST have a non-empty `mount` for either direction; without one the runtime returns an operational error to the LLM.
+Both HTTP runtimes move file content directly between the agent's [mount](mount) and a remote API — the bytes never pass through the model's context or the persisted task result, only a `file` reference does (see [Content](../capabilities/content)). An agent's `mount` MUST include `task` for either direction: a downloaded file is placed by the runtime rather than by the tool, so it resides in the task scope ([Mount](mount)).
 
 **Download — write a response body to the mount.** Set `response: file` on an action's `execute.stateless_http` to declare that the response body is a file. Whether an endpoint returns a file is decided by the schema — response `Content-Type` is never sniffed.
 
