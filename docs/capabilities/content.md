@@ -23,9 +23,9 @@ sizeBytes: int | None
 metadata: object | None
 ```
 
-Content takes exactly two forms — inline `text` or a `file` reference. There is no URI form: every remote object a model can see lives in the receiving agent's mount and is referenced by name.
+Content takes exactly two forms — inline `text` or a `file` reference. A `file` reference names a mount root and never a remote host: there is no form that fetches from somewhere else, because every object a model can see lives in the receiving agent's mount and is referenced from there.
 
-The `file` field is a mount-relative file name in the **receiving agent's mount** (e.g. `report.pdf`), and is the canonical form for all non-text content. All binary data shown to a model MUST be served from the agent's own mount: files are uploaded (or copied) into the mount first, then referenced by name. The runtime resolves `file` parts against the mount per LLM request — content bytes and transient signed URLs are never persisted in task state, and a content hash is captured at reference time for auditing. When content crosses a task boundary (e.g. a sub-task's media output routed to its parent, or a file forwarded to a delegated agent), the runtime MUST copy the object into the recipient's mount at ingestion and re-reference it by `file` name; a reference outside the receiving agent's mount MUST NOT be forwarded to a model.
+The `file` field is a file reference in the **receiving agent's mount**, a URI whose scheme is its root (e.g. `task://report.pdf`; see [Mount](../resources/mount)), and is the canonical form for all non-text content. All binary data shown to a model MUST be served from the agent's own mount: files are uploaded (or copied) into the mount first, then referenced by name. The runtime resolves `file` parts against the mount per LLM request — content bytes and transient signed URLs are never persisted in task state, and a content hash is captured at reference time for auditing. When content crosses a task boundary (e.g. a sub-task's media output routed to its parent, or a file forwarded to a delegated agent), the runtime MUST copy the object into the recipient's mount at ingestion and re-reference it by `file` name; a reference outside the receiving agent's mount MUST NOT be forwarded to a model.
 
 ### Text input (inline)
 
@@ -45,19 +45,19 @@ If the text exceeds the 100&nbsp;KB inline budget (e.g. a large document or syst
 ```json
 {
   "mimeType": "text/plain",
-  "file": "large_prompt.txt",
+  "file": "task://large_prompt.txt",
   "sizeBytes": 56000
 }
 ```
 
 ### Media input (file reference)
 
-If the `ContentPart` represents a file or media object, the `file` field MUST be populated with its mount-relative name, and `mimeType` with the media type. `sizeBytes` MAY be populated.
+If the `ContentPart` represents a file or media object, the `file` field MUST be populated with its reference URI, and `mimeType` with the media type. `sizeBytes` MAY be populated.
 
 ```json
 {
   "mimeType": "video/mp4",
-  "file": "sample.mp4",
+  "file": "task://sample.mp4",
   "sizeBytes": 10485760
 }
 ```

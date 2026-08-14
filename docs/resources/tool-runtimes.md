@@ -102,7 +102,7 @@ stateless_http:
 
 #### Files and the mount
 
-Both HTTP runtimes move file content directly between the agent's [mount](mount) and a remote API — the bytes never pass through the model's context or the persisted task result, only a `file` reference does (see [Content](../capabilities/content)). An agent MUST have a non-`none` `mount` scope for either direction; without one the runtime returns an operational error to the LLM.
+Both HTTP runtimes move file content directly between the agent's [mount](mount) and a remote API — the bytes never pass through the model's context or the persisted task result, only a `file` reference does (see [Content](../capabilities/content)). An agent MUST have a non-empty `mount` for either direction; without one the runtime returns an operational error to the LLM.
 
 **Download — write a response body to the mount.** Set `response: file` on an action's `execute.stateless_http` to declare that the response body is a file. Whether an endpoint returns a file is decided by the schema — response `Content-Type` is never sniffed.
 
@@ -114,7 +114,7 @@ execute:
     response: file        # stream the body into the mount instead of returning it inline
 ```
 
-Instead of an inline result, the action returns a file **handle** — `{ file, mime_type, size_bytes, hash }` — where `file` is a `file:{name}` reference token and `hash` is the backend-certified content hash. The body never enters the tool result and the download attaches nothing to the model's context. The file keeps the server's `Content-Disposition` name when present (a re-download overwrites it); an unnamed response is named `downloaded_<unique8><ext>`. The handle chains like any file result: into a later action's `type: file` parameter, into a CEL tool's `mount.*` functions, or positionally in an LLM script. Without `response: file` the body is always an inline result.
+Instead of an inline result, the action returns a file **handle** — `{ file, mime_type, size_bytes, hash }` — where `file` is a `{root}://{name}` reference and `hash` is the backend-certified content hash. The body never enters the tool result and the download attaches nothing to the model's context. The file keeps the server's `Content-Disposition` name when present (a re-download overwrites it); an unnamed response is named `downloaded_<unique8><ext>`. The handle chains like any file result: into a later action's `type: file` parameter, into a CEL tool's `mount.*` functions, or positionally in an LLM script. Without `response: file` the body is always an inline result.
 
 **Upload — stream a mount file to a remote API.** Add an `upload` block to an action's `execute.stateless_http` to send a mount file to a remote API using a resumable, chunked protocol. The action's own `method`/`url`/`json`/`headers` define the *session-creation* request; the `upload` block drives the transfer that follows.
 

@@ -20,7 +20,7 @@ prompt: str
 
 model: str | None
 priority: int | None
-mount: "none" | "task" | "agent" | "workspace"   # default: "none"
+mount: list["workspace" | "agent" | "task"]      # default: ["task"]; [] means none
 
 limits:
   max_turns: int | None
@@ -82,11 +82,12 @@ exposes:
 
 7. **`model`** — When present, specifies the model the runtime should use for this agent.
 8. **`priority`** — When present, specifies the scheduling priority for tasks created from this agent.
-9. **`mount`** — Controls the agent's access to the workspace mount. Defaults to `"none"` when absent. See [Mount](mount).
-   - `"none"` — no mount access. `mount.*` template variables and `mount.read()`/`mount.write()` CEL functions are not available.
-   - `"task"` — mount prefix is scoped to the individual task.
-   - `"agent"` — mount prefix is scoped to the agent (shared across tasks).
-   - `"workspace"` — mount prefix is scoped to the entire workspace.
+9. **`mount`** — The list of storage mount scopes the agent addresses. An **absent** field defaults to `["task"]` — task scope is where a user's attachment lands, where generated media is written, and where a delegated result arrives, so an agent that says nothing about files still receives them. An **explicit empty list** is the only way to say no mount access: `mount.*` template variables and the `mount.read()`/`mount.write()`/`mount.list()` CEL functions are then unavailable, and file references do not resolve. The two MUST stay distinguishable wherever the document is carried. Each entry contributes one virtual root that files are referenced under. An unrecognised entry MUST be rejected, and so MUST a repeated one. See [Mount](mount).
+   - `"workspace"` — the workspace's shared scope, referenced as `workspace://name`. Every agent enabling it addresses the same files.
+   - `"agent"` — this agent's own scope, referenced as `agent://name`. Persists across every task the agent runs.
+   - `"task"` — the running task's scope, referenced as `task://name`. Confined to one conversation.
+
+   The scopes are independent, so `mount: [workspace, agent]` addresses both.
 
 ### Limits
 
@@ -144,9 +145,9 @@ When a capability key references another agent, the runtime presents it to the L
 13. **`model_capabilities`** — Model-native capabilities the agent can use. They cover both model-internal features, like web-search, and input and output modalities.
 
     - `"web-search"` — Enables LLM-native web search grounding.
-    - `"image-generation"` — Enables LLM-native image generation. **Requires** a non-`none` `mount` — generated media is written to mount storage.
-    - `"audio-generation"` — Enables LLM-native audio generation. **Requires** a non-`none` `mount`.
-    - `"video-generation"` — Enables LLM-native video generation. **Requires** a non-`none` `mount`.
+    - `"image-generation"` — Enables LLM-native image generation. **Requires** `task` in `mount` — generated media is a platform write, and `task://` is its only destination.
+    - `"audio-generation"` — Enables LLM-native audio generation. **Requires** `task` in `mount`.
+    - `"video-generation"` — Enables LLM-native video generation. **Requires** `task` in `mount`.
     - `"image-understanding"` — Enables the agent to directly receive images as input. Note that the model doesn't need to understand images to be able to interact with them (it can still move them, and pass them through normal capabilities).
     - `"audio-understanding"` — Enables the agent to directly receive audio as input.
     - `"video-understanding"` — Enables the agent to directly receive video as input.
@@ -175,7 +176,7 @@ prompt: |
   Open pull requests, push commits, and address review feedback.
 
 model: "gemini/gemini-2.5-flash"
-mount: agent     # mount.read()/mount.write() enabled, prefix scoped to agent
+mount: [agent]   # mount.read()/mount.write() enabled; files are agent://name
 
 limits:
   max_turns: 20

@@ -122,9 +122,7 @@ The following interpolation roots are available in **all** execution spec string
 | `{runtime.dashboard_url}` | Runtime dashboard URL |
 | `{runtime.api_root}` | Runtime API root URL |
 | `{agent.<key>}` | Agent metadata: `agent.name`, `agent.namespace` |
-| `{mount.bucket}` | Mount bucket name. Only present when agent `mount` is non-`none`. See [Mount](mount). |
-| `{mount.prefix}` | Mount scoped prefix. Only present when agent `mount` is non-`none`. |
-| `{mount.backend}` | Mount backend type (`gcs` or `s3`). Only present when agent `mount` is non-`none`. |
+| `{mount.<key>}` | Implementation-defined mount values. This specification defines none; see [Mount](mount). Present only when the agent's `mount` list is non-empty. |
 | `auth.<provider>()` | Auth token from a registered provider (tool scope only) |
 
 The `cel` backend is the exception: its `expression` field is a **full CEL expression**, not `{...}` interpolation (see below).
