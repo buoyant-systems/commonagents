@@ -9,6 +9,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    # The rsync below carries --delete-unmatched-destination-objects, so two
+    # overlapping runs would each delete what the other is still uploading.
+    # Serialised, never cancelled mid-deploy.
+    concurrency:
+      group: deploy-commonagents
+      cancel-in-progress: false
+
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -34,7 +41,22 @@ jobs:
           workload_identity_provider: '${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}'
           service_account: '${{ vars.GCP_SERVICE_ACCOUNT }}'
 
+      # Cache headers are set in two passes, broad then narrow, because the two
+      # kinds of object have opposite requirements.
+      #
+      # Everything mutable — HTML, the sitemap, images — keeps a stable URL
+      # across deploys, so its cached copy is exactly what goes stale. One
+      # minute, at every layer: a shared cache takes its TTL from `s-maxage`,
+      # and a long one there is what makes a deploy invisible for hours.
+      #
+      # Assets are content-hashed by the build (assets/js/17896441.6a8888b3.js),
+      # so a given URL's bytes can never change — a new build produces a new
+      # name. Those are safe to hold for a year, and `immutable` stops browsers
+      # revalidating them on reload.
+      #
+      # The narrow pass runs second and overwrites the broad one.
       - name: Deploy to GCS
         run: |
           gcloud storage rsync build gs://${{ vars.GCP_COMMONAGENTS_BUCKET }}/ --recursive --delete-unmatched-destination-objects
-          gcloud storage objects update "gs://${{ vars.GCP_COMMONAGENTS_BUCKET }}/**" --cache-control="public, max-age=60, s-maxage=7200"
+          gcloud storage objects update "gs://${{ vars.GCP_COMMONAGENTS_BUCKET }}/**" --cache-control="public, max-age=60, s-maxage=60"
+          gcloud storage objects update "gs://${{ vars.GCP_COMMONAGENTS_BUCKET }}/assets/**" --cache-control="public, max-age=31536000, immutable"
