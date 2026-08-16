@@ -42,7 +42,7 @@ execute:
     expression: str   # Must evaluate to a JSON-serialisable object
 ```
 
-The CEL expression has access to `context`, `input`, and `now`. See [CEL Reference](../reference/cel).
+The CEL expression has access to `context`, `input`, and `now`. See [CEL Reference](../reference/cel.md).
 
 **Example:**
 ```yaml
@@ -102,7 +102,7 @@ stateless_http:
 
 #### Files and the mount
 
-Both HTTP runtimes move file content directly between the agent's [mount](mount) and a remote API — the bytes never pass through the model's context or the persisted task result, only a `file` reference does (see [Content](../capabilities/content)). An agent MUST have a non-`none` `mount` scope for either direction; without one the runtime returns an operational error to the LLM.
+Both HTTP runtimes move file content directly between the agent's [mount](mount.md) and a remote API — the bytes never pass through the model's context or the persisted task result, only a `file` reference does (see [Content](../capabilities/content.md)). An agent MUST have a non-`none` `mount` scope for either direction; without one the runtime returns an operational error to the LLM.
 
 **Download — write a response body to the mount.** Set `response: file` on an action's `execute.stateless_http` to declare that the response body is a file. Whether an endpoint returns a file is decided by the schema — response `Content-Type` is never sniffed.
 

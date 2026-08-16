@@ -7,7 +7,7 @@ description: The Trigger manifest for creating new agent tasks in response to in
 
 # Trigger
 
-A Trigger is a persistent resource that automatically creates a new task for an agent when an inbound event matches its source conditions. It is the event-driven counterpart to [Schedule](schedule) — where a Schedule fires on a time cadence, a Trigger fires on an external signal.
+A Trigger is a persistent resource that automatically creates a new task for an agent when an inbound event matches its source conditions. It is the event-driven counterpart to [Schedule](schedule.md) — where a Schedule fires on a time cadence, a Trigger fires on an external signal.
 
 ```yaml
 kind: "commonagents.info/v1beta2/trigger"

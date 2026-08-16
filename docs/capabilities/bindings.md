@@ -13,7 +13,7 @@ They enforce that sensitive or security-critical values (user IDs, account numbe
 
 ## Syntax
 
-Bindings are declared in the `bindings` map of a [Capability](../resources/agent#capabilities) object on an agent:
+Bindings are declared in the `bindings` map of a [Capability](../resources/agent.md#capabilities) object on an agent:
 
 ```yaml
 capabilities:
@@ -27,7 +27,7 @@ capabilities:
       customer_email: "context.user.email"
 ```
 
-Each key MUST correspond to an explicitly declared `parameters` field in the tool schema. Values MUST be valid CEL expressions evaluated against the [task context](task-context).
+Each key MUST correspond to an explicitly declared `parameters` field in the tool schema. Values MUST be valid CEL expressions evaluated against the [task context](task-context.md).
 
 ## Evaluation
 
@@ -115,7 +115,7 @@ The agent only receives `comment` events from `buoyant-systems/agent-mesh` — a
 
 ## CEL Context for Bindings
 
-Bindings have access to the full [task context](task-context):
+Bindings have access to the full [task context](task-context.md):
 
 ```yaml
 bindings:
@@ -152,7 +152,7 @@ capabilities:
           user_id: "context.user.id"
 ```
 
-See [Middleware](middleware) for full middleware documentation.
+See [Middleware](middleware.md) for full middleware documentation.
 
 ## Example: Pinning a Sensitive Parameter
 

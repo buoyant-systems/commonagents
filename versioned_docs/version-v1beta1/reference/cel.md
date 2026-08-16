@@ -98,7 +98,7 @@ Pauses execution and requires the specified user to approve or deny the action. 
 
 ## Mount I/O Functions (CEL Tool Expressions Only)
 
-When an agent's `mount` scope is non-`none`, the following functions are available in CEL tool `expression` fields. They are **not** available in middleware, bindings, or guardrails. See [Mount](../resources/mount) for the full mount architecture.
+When an agent's `mount` scope is non-`none`, the following functions are available in CEL tool `expression` fields. They are **not** available in middleware, bindings, or guardrails. See [Mount](../resources/mount.md) for the full mount architecture.
 
 ### `mount.read(path: string) -> string`
 
@@ -128,7 +128,7 @@ The LLM capability script is the most restricted CEL environment — it is autho
 
 ### `<capability_name>(args: map) -> any`
 
-Invokes a capability with the given arguments. The capability name is the function name derived from the agent's capability configuration (see [Task Context — Capability Keys](../capabilities/task-context#capability-keys)).
+Invokes a capability with the given arguments. The capability name is the function name derived from the agent's capability configuration (see [Task Context — Capability Keys](../capabilities/task-context.md#capability-keys)).
 
 ```cel
 github_file_read_chunk({"path": "README.md", "start_line": 1, "end_line": 50})

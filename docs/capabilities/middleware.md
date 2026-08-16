@@ -115,7 +115,7 @@ All middleware steps have access to:
 | `now` | UTC ISO 8601 timestamp of the current time |
 | `c.cap` | Shorthand for `context.capabilities` |
 
-See [Task Context](task-context) and [CEL Reference](../reference/cel) for full variable documentation.
+See [Task Context](task-context.md) and [CEL Reference](../reference/cel.md) for full variable documentation.
 
 ## Assertion Macros
 

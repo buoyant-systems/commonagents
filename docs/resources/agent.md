@@ -71,7 +71,7 @@ exposes:
 
    | Root | Description |
    |---|---|
-   | `context` | The full [task context](../capabilities/task-context) |
+   | `context` | The full [task context](../capabilities/task-context.md) |
    | `runtime` | Runtime metadata: `runtime.version`, `runtime.dashboard_url`, `runtime.api_root` |
    | `now` | UTC ISO 8601 timestamp string |
 
@@ -82,7 +82,7 @@ exposes:
 
 7. **`model`** — When present, specifies the model the runtime should use for this agent.
 8. **`priority`** — When present, specifies the scheduling priority for tasks created from this agent.
-9. **`mount`** — The list of storage mount scopes the agent addresses. An **absent** field defaults to `["task"]` — task scope is where a user's attachment lands, where generated media is written, and where a delegated result arrives, so an agent that says nothing about files still receives them. An **explicit empty list** is the only way to say no mount access: `mount.*` template variables and the `mount.read()`/`mount.write()`/`mount.list()` CEL functions are then unavailable, and file references do not resolve. The two MUST stay distinguishable wherever the document is carried. Each entry contributes one virtual root that files are referenced under. An unrecognised entry MUST be rejected, and so MUST a repeated one. See [Mount](mount).
+9. **`mount`** — The list of storage mount scopes the agent addresses. An **absent** field defaults to `["task"]` — task scope is where a user's attachment lands, where generated media is written, and where a delegated result arrives, so an agent that says nothing about files still receives them. An **explicit empty list** is the only way to say no mount access: `mount.*` template variables and the `mount.read()`/`mount.write()`/`mount.list()` CEL functions are then unavailable, and file references do not resolve. The two MUST stay distinguishable wherever the document is carried. Each entry contributes one virtual root that files are referenced under. An unrecognised entry MUST be rejected, and so MUST a repeated one. See [Mount](mount.md).
    - `"workspace"` — the workspace's shared scope, referenced as `workspace://name`. Every agent enabling it addresses the same files.
    - `"agent"` — this agent's own scope, referenced as `agent://name`. Persists across every task the agent runs.
    - `"task"` — the running task's scope, referenced as `task://name`. Confined to one conversation.
@@ -91,7 +91,7 @@ exposes:
 
 ### Limits
 
-10. **`limits`** — When present, defines resource limits for tasks created from this agent. When a limit is exceeded, the runtime terminates the task with `terminal_reason: errored` (see [Task Lifecycle](../capabilities/task-context#termination)).
+10. **`limits`** — When present, defines resource limits for tasks created from this agent. When a limit is exceeded, the runtime terminates the task with `terminal_reason: errored` (see [Task Lifecycle](../capabilities/task-context.md#termination)).
     - `max_turns` — maximum number of LLM turns.
     - `max_prompt_tokens` — cumulative prompt token limit across all LLM calls.
     - `max_completion_tokens` — cumulative completion token limit.
@@ -100,7 +100,7 @@ exposes:
 
 ### Parameters
 
-11. **`parameters`** — When present, defines the structured input this agent accepts. The schema itself is static — no interpolation. Uses [`ParameterSchema`](../reference/parameters) semantics:
+11. **`parameters`** — When present, defines the structured input this agent accepts. The schema itself is static — no interpolation. Uses [`ParameterSchema`](../reference/parameters.md) semantics:
     - A property **without** a `default` is required — the caller must supply a value.
     - A property **with** a `default` is optional — the default is used when the value is absent.
     - `require_binding: true` — a **validation constraint**: the parent agent invoking this sub-agent must supply a binding for this parameter. Without a binding the configuration is invalid. It is the binding that hides the parameter from the LLM.
@@ -111,10 +111,10 @@ exposes:
 A **capability** is anything the LLM can invoke during a task, or that can send inbound events to the task. Capabilities come in three forms:
 
 - **Tool actions** — outbound functions backed by a real execution backend (HTTP, CEL, MCP, etc.). The LLM never sees the raw tool — only its individual named actions, presented as callable functions.
-- **Tool events** — inbound signals from external platforms. When a tool is declared as a capability, all of its events are automatically subscribed. Events inject input into the task using the tool's `message` template, scoped by the agent's bindings. See [Events](../capabilities/events).
+- **Tool events** — inbound signals from external platforms. When a tool is declared as a capability, all of its events are automatically subscribed. Events inject input into the task using the tool's `message` template, scoped by the agent's bindings. See [Events](../capabilities/events.md).
 - **Agent delegation** — another agent exposed as a capability. When invoked, the runtime creates an autonomous child task that runs its own conversation loop and returns its output as a capability result. From the LLM's perspective this is indistinguishable from a tool action.
 
-12. **`capabilities`** — Defines the capabilities available to this agent. Each key references a tool or another agent, in one of the forms given in [References and Versions](../concepts#references-and-versions), and MAY carry an `@<version>` suffix to pin that capability to exact content rather than to whatever is current. Each value is either `"*"` or a `Capability` object.
+12. **`capabilities`** — Defines the capabilities available to this agent. Each key references a tool or another agent, in one of the forms given in [References and Versions](../concepts.md#references-and-versions), and MAY carry an `@<version>` suffix to pin that capability to exact content rather than to whatever is current. Each value is either `"*"` or a `Capability` object.
 
     **`"*"` (wildcard)** — All actions are visible to the LLM and all events are subscribed, with no middleware and no bindings.
 
@@ -129,12 +129,12 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
     ```
 
     - **`include`** — When present, only the named actions **and events** are active. Actions not in the list are hidden from the LLM; events not in the list are not subscribed. An explicit empty list `[]` hides all actions and subscribes to no events. No interpolation.
-    - **`bindings`** — Each value is a full **CEL expression** (not `{...}` interpolation) evaluated at invocation time. Available roots: `context`, `runtime`, `now`. Binding values populate `parameters.*` which the tool's event `receive.filter` expressions can reference to scope which events are routed to this agent. See [Bindings](../capabilities/bindings).
+    - **`bindings`** — Each value is a full **CEL expression** (not `{...}` interpolation) evaluated at invocation time. Available roots: `context`, `runtime`, `now`. Binding values populate `parameters.*` which the tool's event `receive.filter` expressions can reference to scope which events are routed to this agent. See [Bindings](../capabilities/bindings.md).
     - **`before_first`** — Middleware steps evaluated before the first invocation of this capability in a task only.
-    - **`before`** — Middleware steps evaluated before every action invocation **and** before every incoming event activation. When evaluated for an event, the `event` variable is available in CEL scope. Use `!has(event) || <condition>` for assertions that should only apply to events. See [Events](../capabilities/events).
+    - **`before`** — Middleware steps evaluated before every action invocation **and** before every incoming event activation. When evaluated for an event, the `event` variable is available in CEL scope. Use `!has(event) || <condition>` for assertions that should only apply to events. See [Events](../capabilities/events.md).
     - **`after`** — Middleware steps evaluated after every action invocation, before the result is returned to the LLM. Also evaluated after each incoming event is formatted, before it is committed as input. Use `has(event)` to apply transforms only to event-originated turns.
 
-    See [Middleware](../capabilities/middleware) for the full step specification.
+    See [Middleware](../capabilities/middleware.md) for the full step specification.
 
 ### Sub-Agent Delegation
 
@@ -158,11 +158,11 @@ When a capability key references another agent, the runtime presents it to the L
 
 ### Guardrails
 
-14. **`guardrails`** — When present, defines middleware steps evaluated at the agent's input/output boundary. `before` steps are evaluated when the agent receives input; `after` steps are evaluated before the agent responds. Uses the same middleware step field semantics as capability middleware. See [Middleware](../capabilities/middleware).
+14. **`guardrails`** — When present, defines middleware steps evaluated at the agent's input/output boundary. `before` steps are evaluated when the agent receives input; `after` steps are evaluated before the agent responds. Uses the same middleware step field semantics as capability middleware. See [Middleware](../capabilities/middleware.md).
 
 ### Exposes
 
-15. **`exposes`** — When present, the runtime appends these key-value pairs to the response returned to the caller. Each value is a **full CEL expression** evaluated against the task context. Available roots: `context`, `input`, `output`, `now`, `runtime`. See [Task Context](../capabilities/task-context).
+15. **`exposes`** — When present, the runtime appends these key-value pairs to the response returned to the caller. Each value is a **full CEL expression** evaluated against the task context. Available roots: `context`, `input`, `output`, `now`, `runtime`. See [Task Context](../capabilities/task-context.md).
 
 ## Example
 

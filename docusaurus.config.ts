@@ -16,6 +16,13 @@ const config: Config = {
 
   onBrokenLinks: 'throw',
 
+  // Every page is written as `<dir>/index.html`, and a GCS bucket resolves that
+  // from a request ending in `/` via its main-page-suffix — but not from one
+  // without, which is a 404 the origin has to be told how to rewrite. Emitting
+  // the trailing slash asks for the object that exists, so the redirect never
+  // fires on an internal link and the canonical is the URL the browser lands on.
+  trailingSlash: true,
+
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],

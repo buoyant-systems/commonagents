@@ -163,4 +163,4 @@ The `context` variable is available in:
 | Agent prompt interpolation | `context` |
 | LLM capability script | `<capability>()`, `file()` — no `context` access |
 
-See [CEL Reference](../reference/cel) for the full list of available functions and macros.
+See [CEL Reference](../reference/cel.md) for the full list of available functions and macros.

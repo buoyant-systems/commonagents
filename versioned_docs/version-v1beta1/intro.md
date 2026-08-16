@@ -18,7 +18,7 @@ The **Common Agent Specification** is an open, vendor-neutral format for definin
 
 ## How to read this specification
 
-Start with [Why?](./why) for the design rationale, then [Concepts](./concepts) for the mental model. The resource reference pages ([Agent](./resources/agent), [Tool](./resources/tool), [Bundle](./resources/bundle), [Schedule](./resources/schedule)) are the normative field-level spec. The [Task Lifecycle](./capabilities/task-context) and [Reference](./reference/cel) sections cover runtime behaviour and expression syntax.
+Start with [Why?](./why.md) for the design rationale, then [Concepts](./concepts.md) for the mental model. The resource reference pages ([Agent](./resources/agent.md), [Tool](./resources/tool.md), [Bundle](./resources/bundle.md), [Schedule](./resources/schedule.md)) are the normative field-level spec. The [Task Lifecycle](./capabilities/task-context.md) and [Reference](./reference/cel.md) sections cover runtime behaviour and expression syntax.
 
 ## Versioning
 

@@ -11,7 +11,7 @@ Tasks and agents often need to process text and varying forms of multimedia. To 
 
 A text string and a 10&nbsp;GB video segment are both represented as `ContentPart`s, differing only by their properties.
 
-To prevent task objects and event histories from growing unboundedly, inline content is bounded: a `ContentPart`'s `text` field MUST NOT exceed **100&nbsp;KB (100,000 bytes)**. Text beyond this budget IS file content: it MUST be uploaded to the agent's [mount](../resources/mount) and passed as a `file` reference. Implementations MUST reject oversized text with a corrective error, never transform it implicitly — and since mounts are optional, an agent without a mount cannot accept text beyond the inline budget at all. A part's `metadata` MUST NOT exceed 8&nbsp;KB serialised: metadata carries small annotations, never payloads. This enforces a strict **pass-by-reference** paradigm for large data.
+To prevent task objects and event histories from growing unboundedly, inline content is bounded: a `ContentPart`'s `text` field MUST NOT exceed **100&nbsp;KB (100,000 bytes)**. Text beyond this budget IS file content: it MUST be uploaded to the agent's [mount](../resources/mount.md) and passed as a `file` reference. Implementations MUST reject oversized text with a corrective error, never transform it implicitly — and since mounts are optional, an agent without a mount cannot accept text beyond the inline budget at all. A part's `metadata` MUST NOT exceed 8&nbsp;KB serialised: metadata carries small annotations, never payloads. This enforces a strict **pass-by-reference** paradigm for large data.
 
 ## ContentPart Schema
 
@@ -25,7 +25,7 @@ metadata: object | None
 
 Content takes exactly two forms — inline `text` or a `file` reference. A `file` reference names a mount root and never a remote host: there is no form that fetches from somewhere else, because every object a model can see lives in the receiving agent's mount and is referenced from there.
 
-The `file` field is a file reference in the **receiving agent's mount**, a URI whose scheme is its root (e.g. `task://report.pdf`; see [Mount](../resources/mount)), and is the canonical form for all non-text content. All binary data shown to a model MUST be served from the agent's own mount: files are uploaded (or copied) into the mount first, then referenced by name. The runtime resolves `file` parts against the mount per LLM request — content bytes and transient signed URLs are never persisted in task state, and a content hash is captured at reference time for auditing. When content crosses a task boundary (e.g. a sub-task's media output routed to its parent, or a file forwarded to a delegated agent), the runtime MUST copy the object into the recipient's mount at ingestion and re-reference it by `file` name; a reference outside the receiving agent's mount MUST NOT be forwarded to a model.
+The `file` field is a file reference in the **receiving agent's mount**, a URI whose scheme is its root (e.g. `task://report.pdf`; see [Mount](../resources/mount.md)), and is the canonical form for all non-text content. All binary data shown to a model MUST be served from the agent's own mount: files are uploaded (or copied) into the mount first, then referenced by name. The runtime resolves `file` parts against the mount per LLM request — content bytes and transient signed URLs are never persisted in task state, and a content hash is captured at reference time for auditing. When content crosses a task boundary (e.g. a sub-task's media output routed to its parent, or a file forwarded to a delegated agent), the runtime MUST copy the object into the recipient's mount at ingestion and re-reference it by `file` name; a reference outside the receiving agent's mount MUST NOT be forwarded to a model.
 
 ### Text input (inline)
 
@@ -66,7 +66,7 @@ If the `ContentPart` represents a file or media object, the `file` field MUST be
 
 ## Using content in CEL conditions
 
-Because all inputs and outputs conform to this schema, deterministic capability `conditions` and agent [guardrails](middleware) can assert against these structures using standard CEL properties:
+Because all inputs and outputs conform to this schema, deterministic capability `conditions` and agent [guardrails](middleware.md) can assert against these structures using standard CEL properties:
 
 - **Restrict file size:** `size(i) > 0 && i[0].sizeBytes < 15000000` (file inputs under 15&nbsp;MB)
 - **Restrict file type:** `size(i) > 0 && i[0].mimeType.startsWith("image/")` (only images)

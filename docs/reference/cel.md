@@ -29,7 +29,7 @@ Interpolation roots available in tool specs:
 | `{settings.<key>}` | Namespace-level tool settings |
 | `{parameters.<key>}` | LLM-provided or binding-provided parameters |
 | `{session.<key>}` | Session state (stateful_session runtimes only) |
-| `{mount.<key>}` | Implementation-defined mount values. This specification defines none; see [Mount](../resources/mount). Present only when the agent's `mount` list is non-empty. |
+| `{mount.<key>}` | Implementation-defined mount values. This specification defines none; see [Mount](../resources/mount.md). Present only when the agent's `mount` list is non-empty. |
 | `{auth.<provider>}` | Auth tokens from the configured auth provider |
 | `{context.<path>}` | Task context fields |
 
@@ -98,7 +98,7 @@ Pauses execution and requires the specified user to approve or deny the action. 
 
 ## Mount I/O Functions (CEL Tool Expressions Only)
 
-When an agent's `mount` list is non-empty, the following functions are available in CEL tool `expression` fields. They are **not** available in middleware, bindings, or guardrails. See [Mount](../resources/mount) for the full mount architecture.
+When an agent's `mount` list is non-empty, the following functions are available in CEL tool `expression` fields. They are **not** available in middleware, bindings, or guardrails. See [Mount](../resources/mount.md) for the full mount architecture.
 
 Every reference these functions take or return is a URI whose scheme is the file's root — `"workspace://report.pdf"`, `"agent://skill.md"`, `"task://output.png"`. Because `//` opens a line comment in CEL, a reference MUST be written as a quoted string literal.
 
@@ -134,7 +134,7 @@ The LLM capability script is the most restricted CEL environment — it is autho
 
 ### `<capability_name>(args: map) -> any`
 
-Invokes a capability with the given arguments. The capability name is the function name derived from the agent's capability configuration (see [Task Context — Capability Keys](../capabilities/task-context#capability-keys)).
+Invokes a capability with the given arguments. The capability name is the function name derived from the agent's capability configuration (see [Task Context — Capability Keys](../capabilities/task-context.md#capability-keys)).
 
 ```cel
 github_file_read_chunk({"path": "README.md", "start_line": 1, "end_line": 50})

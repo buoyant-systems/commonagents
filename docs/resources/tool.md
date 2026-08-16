@@ -80,7 +80,7 @@ mcp: object | None
    - A property **with** a `default` is optional — the default is used when the value is absent.
    - `require_binding: true` — a **validation constraint**: any agent using this tool must supply a binding for this parameter. Without a binding the configuration is invalid. It is the **binding** (not this flag) that hides the parameter from the LLM and seals its allow list entry. Parameters used in event `receive.filter` expressions are good candidates for `require_binding: true`, because it ensures the binding (and therefore the routing value) is always present.
 
-   See [Parameter Pipeline](../reference/parameters) for how values flow from settings → bindings → LLM → interpolation.
+   See [Parameter Pipeline](../reference/parameters.md) for how values flow from settings → bindings → LLM → interpolation.
 
 ### Actions
 
@@ -105,7 +105,7 @@ mcp: object | None
    - **`timeout`** — optional duration string (e.g. `"24h"`, `"168h"`). Defines the default subscription duration for this event — how long a task remains subscribed after its last activity. When the timeout expires, the subscription is removed but the task is not deleted or errored. If absent, the event has no default timeout. Agents MAY override this value via the capability's `timeout` field.
    - **`max_timeout`** — optional duration string. The hard maximum subscription duration for this event. Agent-specified timeouts are clamped to this value. If absent, there is no hard cap. When both `timeout` and `max_timeout` are set, `max_timeout` MUST be ≥ `timeout`. A runtime MAY also enforce its own maximum timeout independent of the tool declaration.
    - **`parameters`** — JSON Schema defining additional parameters specific to this event's `receive.filter`. These are populated by agent bindings. They share the same allow list namespace as root and per-action parameters: if a per-event parameter shares a name with a per-action parameter, LLM action calls that resolve that name also populate the per-event parameter's allow list entry.
-   - **`receive`** — the inbound delivery mechanism. Exactly one sub-type key is present. The sub-type's optional `filter` CEL field references `parameters.*` resolved against the tool-wide action allow list. The `webhook` sub-type additionally supports an optional `secret` field — a `{settings.*}` expression resolving to an HMAC secret. When present, the runtime validates the inbound webhook signature before evaluating the filter. See [Tool Runtimes](tool-runtimes#receive-runtimes) and [Events](../capabilities/events).
+   - **`receive`** — the inbound delivery mechanism. Exactly one sub-type key is present. The sub-type's optional `filter` CEL field references `parameters.*` resolved against the tool-wide action allow list. The `webhook` sub-type additionally supports an optional `secret` field — a `{settings.*}` expression resolving to an HMAC secret. When present, the runtime validates the inbound webhook signature before evaluating the filter. See [Tool Runtimes](tool-runtimes.md#receive-runtimes) and [Events](../capabilities/events.md).
 
 ### Runtime Backends
 
@@ -122,7 +122,7 @@ The following interpolation roots are available in **all** execution spec string
 | `{runtime.dashboard_url}` | Runtime dashboard URL |
 | `{runtime.api_root}` | Runtime API root URL |
 | `{agent.<key>}` | Agent metadata: `agent.name`, `agent.namespace` |
-| `{mount.<key>}` | Implementation-defined mount values. This specification defines none; see [Mount](mount). Present only when the agent's `mount` list is non-empty. |
+| `{mount.<key>}` | Implementation-defined mount values. This specification defines none; see [Mount](mount.md). Present only when the agent's `mount` list is non-empty. |
 | `auth.<provider>()` | Auth token from a registered provider (tool scope only) |
 
 The `cel` backend is the exception: its `expression` field is a **full CEL expression**, not `{...}` interpolation (see below).
@@ -135,7 +135,7 @@ execute:
     expression: str   # Full CEL expression — NOT {expression} interpolation
 ```
 
-The `expression` field is a full CEL expression evaluated against the middleware scope. Available roots: `context`, `input`, `now`, `runtime`. Returns a JSON-serialisable value. See [CEL Reference](../reference/cel).
+The `expression` field is a full CEL expression evaluated against the middleware scope. Available roots: `context`, `input`, `now`, `runtime`. Returns a JSON-serialisable value. See [CEL Reference](../reference/cel.md).
 
 #### `stateless_http`
 

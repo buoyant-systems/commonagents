@@ -137,7 +137,7 @@ Events can activate an agent in two ways:
 | Mode | Resource | Effect |
 |---|---|---|
 | **Warm resume** | Tool event + agent capability | Injects input into an existing, idle task |
-| **Cold start** | [`Trigger`](../resources/trigger) manifest | Creates a new task for the agent |
+| **Cold start** | [`Trigger`](../resources/trigger.md) manifest | Creates a new task for the agent |
 
 Tool event subscriptions resume **existing tasks**. Triggers act on raw event payloads and bypass the action allow list — they are for creating new tasks from external signals.
 

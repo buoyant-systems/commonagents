@@ -89,7 +89,7 @@ The allow list is maintained **per-tool, per-task**, keyed by **parameter name**
 
 ## Interpolation
 
-After parameters are resolved, their values are interpolated into tool spec fields using `{variable.key}` syntax. See [CEL Reference](cel#interpolation-syntax) for the full interpolation roots.
+After parameters are resolved, their values are interpolated into tool spec fields using `{variable.key}` syntax. See [CEL Reference](cel.md#interpolation-syntax) for the full interpolation roots.
 
 ```yaml
 # parameters.path resolved from LLM, settings.github.token from settings

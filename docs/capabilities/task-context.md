@@ -88,7 +88,7 @@ context:
 
 ## TaskIO
 
-`input` and `output` are lists of [TaskIO](./task-io) objects — the human-facing shape of one conversational message: the well-known `message`, `received_at` and `committed_at` keys plus dynamic keys from the agent's `parameters` schema (input entries) or `exposes` schema (output entries).
+`input` and `output` are lists of [TaskIO](./task-io.md) objects — the human-facing shape of one conversational message: the well-known `message`, `received_at` and `committed_at` keys plus dynamic keys from the agent's `parameters` schema (input entries) or `exposes` schema (output entries).
 
 Each input entry carries its own snapshot of `message` and parameter values. CEL bindings reference them via:
 
@@ -160,4 +160,4 @@ The `context` variable is available in:
 | Agent prompt interpolation | `context` |
 | LLM capability script | `<capability>()`, `file()` — no `context` access |
 
-See [CEL Reference](../reference/cel) for the full list of available functions and macros.
+See [CEL Reference](../reference/cel.md) for the full list of available functions and macros.

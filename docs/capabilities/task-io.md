@@ -20,7 +20,7 @@ committed_at: str            # UTC ISO 8601 — when this turn entered the conve
 {dynamic_key}: any           # inputs: agent parameters · outputs: agent exposes
 ```
 
-1. `message` MUST be present on every TaskIO, carrying the conversational [content parts](./content).
+1. `message` MUST be present on every TaskIO, carrying the conversational [content parts](./content.md).
 2. `committed_at` MUST be present on every TaskIO and MUST be the time the turn entered the conversation the model reads from.
 3. `received_at` MUST be present on every **input** and MUST be the time the runtime took delivery of it. It does not apply to an output, which the runtime produces rather than receives. The two instants are recorded separately because they are not the same moment — see Messages below.
 4. `message`, `received_at` and `committed_at` are well-known keys: an agent's `parameters` and `exposes` schemas MUST NOT supply them.
@@ -29,14 +29,14 @@ committed_at: str            # UTC ISO 8601 — when this turn entered the conve
 
 ## Where TaskIO Appears
 
-- In the [task context](./task-context), as `context.input` and `context.output` — CEL expressions read entries positionally (`context.input[0].ticket_id`).
-- In the **messages projection** below — the conversation as a task's consumers read it, polled alongside the [task status](./task-status).
+- In the [task context](./task-context.md), as `context.input` and `context.output` — CEL expressions read entries positionally (`context.input[0].ticket_id`).
+- In the **messages projection** below — the conversation as a task's consumers read it, polled alongside the [task status](./task-status.md).
 
 ## Messages
 
 The conversation is exposed as a single list of the task's TaskIO entries in **commit order** — the order in which the task actually took them — exactly as a transcript of what happened reads.
 
-An input has two distinct instants, and a runtime MUST track both. It **arrives** when the runtime takes delivery of it, and it is **committed** when the runtime places it in front of the model. For an input sent while a turn is in flight these are not the same moment and may be a whole turn apart: a runtime is not obliged to interrupt a running turn (see [Task Status, Interaction](./task-status#interaction)), so a queued input is committed whenever that runtime next calls the model — which, for a turn that answers without invoking a capability, is after that turn's output.
+An input has two distinct instants, and a runtime MUST track both. It **arrives** when the runtime takes delivery of it, and it is **committed** when the runtime places it in front of the model. For an input sent while a turn is in flight these are not the same moment and may be a whole turn apart: a runtime is not obliged to interrupt a running turn (see [Task Status, Interaction](./task-status.md#interaction)), so a queued input is committed whenever that runtime next calls the model — which, for a turn that answers without invoking a capability, is after that turn's output.
 
 Commit order is therefore not send order, and a message can be listed after an output it was sent before. The list reports the difference rather than resolving it: every input carries `received_at`, so a consumer that wants to present the order the sender experienced has what it needs. **Which order to present is the consumer's decision.**
 

@@ -68,7 +68,7 @@ These variables allow **any** tool runtime (HTTP, stateful session, MCP, etc.) t
 
 ## CEL I/O Functions
 
-When the agent's `mount` scope is non-`none`, the following functions are available in [CEL tool expressions](../reference/cel):
+When the agent's `mount` scope is non-`none`, the following functions are available in [CEL tool expressions](../reference/cel.md):
 
 | Function | Description |
 |----------|-------------|
@@ -87,7 +87,7 @@ When mount is configured, the `file(path)` function becomes available in the LLM
 post_attachment({"file": file("reports/summary.pdf")})
 ```
 
-The LLM sees a summary description of the file (e.g., `report.pdf (application/pdf, 1.2MB)`) rather than the binary content. The reference can be passed as a capability argument so that tools can operate on the file directly. See [CEL Reference](../reference/cel#llm-capability-script-functions).
+The LLM sees a summary description of the file (e.g., `report.pdf (application/pdf, 1.2MB)`) rather than the binary content. The reference can be passed as a capability argument so that tools can operate on the file directly. See [CEL Reference](../reference/cel.md#llm-capability-script-functions).
 
 ## Multimedia Output
 
