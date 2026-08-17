@@ -1,6 +1,23 @@
+// Scoped to the code this repo writes: the site under src/, and the two files
+// Docusaurus loads in Node to build it.
+//
+// `include` matters more than it looks. Without one, TypeScript's default
+// excludes still apply but every .ts and .tsx in the tree becomes a root file,
+// build output included — slow, and it makes a passing run say much less than
+// it appears to.
+//
+// `types` has to name @docusaurus/module-type-aliases and theme-classic
+// explicitly: they hold the ambient declarations for @docusaurus/*, @theme/*
+// and *.module.css, and unlike an @types package nothing pulls them in on its
+// own. `node` is named for docusaurus.config.ts and sidebars.ts, which run
+// under it.
 {
   "extends": "@docusaurus/tsconfig",
   "compilerOptions": {
-    "baseUrl": "."
-  }
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "strict": true,
+    "types": ["node", "@docusaurus/module-type-aliases", "@docusaurus/theme-classic"]
+  },
+  "include": ["src", "docusaurus.config.ts", "sidebars.ts"]
 }

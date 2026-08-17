@@ -74,6 +74,24 @@ const config: Config = {
         theme: {
           customCss: './src/css/custom.css',
         },
+        // Entries carry a location and nothing else. The defaults are a
+        // `weekly` changefreq and a `0.5` priority stamped on every page alike,
+        // which say nothing — priority only means anything as a comparison
+        // between pages, and identical values make no comparison. Google states
+        // it ignores both.
+        //
+        // `lastmod` is deliberately absent rather than defaulted: it is derived
+        // per file from git history, and a CI checkout at the default depth of
+        // 1 would have every page claim the date of the same single commit. A
+        // sitemap whose lastmod values are all identical is one a crawler
+        // learns to disregard.
+        //
+        // A page is excluded by declaring a robots noindex meta on it, which
+        // the plugin reads off the emitted page.
+        sitemap: {
+          changefreq: null,
+          priority: null,
+        },
       } satisfies Preset.Options,
     ],
   ],

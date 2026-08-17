@@ -32,6 +32,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Both run before the build, because the build cannot fail on either. It
+      # type-checks nothing, and it renders every page under Node — the one
+      # environment where a browser module reaching for a Node global works. A
+      # page like that builds and server-renders perfectly, then throws the
+      # moment a visitor loads it. See eslint.config.mjs.
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
       - name: Build site
         run: npm run build
 
