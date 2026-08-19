@@ -15,9 +15,9 @@ Tool spec fields support `{expression}` interpolation for embedding values into 
 
 ```yaml
 # In tool parameters / headers / URLs:
-url: "https://api.example.com/repos/{settings.github.owner}/{parameters.repo}"
+url: "{connection('github').base_url}/repos/{parameters.owner}/{parameters.repo}"
 headers:
-  Authorization: "Bearer {settings.api_key}"
+  Authorization: "Bearer {connection('github').service_auth().token}"
 body:
   message: "Task completed by {context.agent.name}"
 ```
@@ -26,11 +26,12 @@ Interpolation roots available in tool specs:
 
 | Root | Description |
 |---|---|
-| `{settings.<key>}` | Namespace-level tool settings |
 | `{parameters.<key>}` | LLM-provided or binding-provided parameters |
+| `{connection('<provider>').<key>}` | A non-secret field of a named provider connection. See [Connections](parameters.md#connections). |
+| `{connection('<provider>').user_auth(scopes?).token}` | A credential for the user responsible for the task — the tool acts as them. The runtime injects the identity; the author never passes one. |
+| `{connection('<provider>').service_auth(selector?).token}` | A credential for the deployment's own machine identity, optionally selecting one target resource. Both accessors also expose the connection's named public and secret fields. |
 | `{session.<key>}` | Session state (stateful_session runtimes only) |
 | `{mount.<key>}` | Implementation-defined mount values. This specification defines none; see [Mount](../resources/mount.md). Present only when the agent's `mount` list is non-empty. |
-| `{auth.<provider>}` | Auth tokens from the configured auth provider |
 | `{context.<path>}` | Task context fields |
 
 ## CEL Expressions
@@ -54,7 +55,7 @@ output.status_code >= 200 && output.status_code < 300
 size(input.message) < 50000
 
 # String operations
-context.agent.namespace.startsWith("prod-")
+context.agent.name.startsWith("prod_")
 context.user.email.endsWith("@example.com")
 
 # Map/list access
@@ -130,7 +131,7 @@ Lists the agent's files as sorted reference URIs, across every enabled root.
 
 ## LLM Capability Script Functions
 
-The LLM capability script is the most restricted CEL environment — it is authored by the LLM at runtime and is **untrusted**. The LLM cannot access `context`, `settings`, `auth`, or any other privileged variables. The only functions available are the agent's declared capabilities and the built-in functions below.
+The LLM capability script is the most restricted CEL environment — it is authored by the LLM at runtime and is **untrusted**. The LLM cannot access `context`, `connection()`, `mount.*` or any other privileged variable or function. The only functions available are the agent's declared capabilities and the built-in functions below.
 
 ### `<capability_name>(args: map) -> any`
 
@@ -165,6 +166,8 @@ post_attachment({"document": "workspace://reports/summary.pdf"})
 | `mount.write()` | | | ✅ | | |
 | `mount.list()` | | | ✅ | | |
 | `<capability>()` | | | | | ✅ |
+
+`connection()` is absent from every column: it belongs to tool execution templates alone, and is not available in any of these environments.
 
 ## Error Message Interpolation
 

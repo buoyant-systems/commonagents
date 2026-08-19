@@ -24,30 +24,27 @@ description: |
 author: "Acme Corp"
 version: "1.0.0"
 url: "https://github.com/acme/agents"
-requiredSettings:
-  - "github.token"
-  - "github.owner"
+templateVariables:
+  - name: "owner"
+    description: "GitHub organisation or user"
+    required: true
+  - name: "default_branch"
+    description: "Branch to operate on"
+    default: "main"
 ---
 kind: "commonagents.info/v1/agent"
-namespace: "engineering"
-name: "coder-agent"
+name: "coder_agent"
 description: "An autonomous software engineering agent."
 prompt: |
   You are an expert software engineer...
 capabilities:
-  github-file: "*"
+  github_file: "*"
 ---
 kind: "commonagents.info/v1/tool"
-namespace: "engineering"
-name: "github-file"
+name: "github_file"
 description: "Reads and writes files in a GitHub repository."
-settings:
-  properties:
-    github.owner:
-      title: "GitHub Owner"
-    github.token:
-      title: "GitHub Token"
-      format: "password"
+stateless_http:
+  base_url: "https://api.github.com/repos/{template.owner}/project/{template.default_branch}"
 ```
 
 ## Bundle Descriptor
@@ -62,18 +59,29 @@ If a descriptor document is present, the runtime treats it as bundle metadata an
 | `author` | string | | Who created or maintains the bundle |
 | `version` | string | | Semver version string |
 | `url` | string | | Link to the bundle homepage or repository |
-| `requiredSettings` | `[]string` | | When present, identifies tool settings keys the runtime collects from the user before completing the import |
+| `templateVariables` | [`TemplateVariable[]`](#template-variables) | | Parameters the bundle collects from the user and substitutes into its resource documents at import time |
 
-### Required Settings
+### Template Variables
 
-Each entry in `requiredSettings` is a string matching a tool settings key (e.g. `"github.token"`). The runtime cross-references these against the `settings` JSON schemas declared in the bundle's tools to derive prompt metadata:
+A bundle may parameterise its resource documents with **template variables**. Each variable is declared in the descriptor's `templateVariables` list and referenced from any resource document with a `{template.<name>}` token. When the bundle is imported, the runtime collects a value for each variable and substitutes it into the documents **before they are stored** — no `{template.<name>}` token survives into the persisted resource.
 
-- **Label** — from the JSON Schema `title` field
-- **Description** — from the JSON Schema `description` field
-- **Default** — from the JSON Schema `default` field
-- **Format** — from the JSON Schema `format` field (e.g. `"password"` to mask the input)
+Template variables are for non-secret configuration only (organisation, repository, region, base URL). Secrets are provided through connections, not template variables.
 
-The runtime collects values for all declared required settings before completing the import. Keys in `requiredSettings` that do not appear in any tool's `settings` schema are silently dropped.
+Each `TemplateVariable` has the following fields:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | ✅ | The variable identifier, referenced as `{template.<name>}` |
+| `description` | string | | Help text shown to the user when collecting a value |
+| `default` | string | | Value used when the user provides none |
+| `required` | bool | | When `true`, the import fails unless a value is provided or a `default` is set |
+
+Substitution rules:
+
+- The token grammar is `{template.<name>}`. It shares the single-brace form of [CEL template interpolation](../reference/cel.md), but a `{template.*}` token is resolved entirely at **import time** — it is never a runtime interpolation root.
+- Substitution applies to every resource document; the descriptor document itself is never substituted.
+- A `{template.<name>}` token whose name is not declared in `templateVariables` fails the import.
+- A `required` variable with neither a provided value nor a `default` fails the import.
 
 ## Resource Documents
 
@@ -91,8 +99,8 @@ For each document after the descriptor, the runtime attempts to load it as a res
 2. When present, the descriptor is the first document.
 3. The descriptor `name` field is required; all other fields are optional.
 4. Bundles without a descriptor are valid — they are a plain collection of resources.
-5. When `requiredSettings` is present, the runtime collects all declared values before the import completes.
-6. Keys in `requiredSettings` that match no tool `settings` schema are silently dropped.
+5. When `templateVariables` is present, the runtime collects a value for each variable before the import completes and substitutes them into the resource documents.
+6. A `{template.<name>}` reference to a variable not declared in `templateVariables` fails the import.
 
 ## Size Limits
 

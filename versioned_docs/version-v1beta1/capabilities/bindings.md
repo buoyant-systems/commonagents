@@ -17,7 +17,7 @@ Bindings are declared in the `bindings` map of a [Capability](../resources/agent
 
 ```yaml
 capabilities:
-  github-file:
+  github_file:
     bindings:
       owner: "context.input[0].owner"       # from agent parameters
       token: "context.user.id"              # from authenticated user
@@ -76,7 +76,7 @@ events:
 
 # Agent manifest
 capabilities:
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"   # binding hides 'owner' from LLM and seals its allow list
       repo:  "agent-mesh"        # binding hides 'repo' from LLM and seals its allow list
@@ -105,7 +105,7 @@ events:
 
 # Agent manifest
 capabilities:
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"   # scopes actions AND events to this org
       repo:  "agent-mesh"        # scopes actions AND events to this repo
@@ -143,7 +143,7 @@ Middleware `invoke` steps also support bindings, using the same CEL syntax. Thes
 
 ```yaml
 capabilities:
-  github-file:
+  github_file:
     before:
       - invoke: "audit-log:record_event"
         bindings:
@@ -159,7 +159,7 @@ See [Middleware](middleware.md) for full middleware documentation.
 ```yaml
 # Agent manifest
 capabilities:
-  stripe-refund:
+  stripe_refund:
     bindings:
       # The customer_id is always sourced from the validated ticket context,
       # never from LLM output — preventing prompt injection attacks.

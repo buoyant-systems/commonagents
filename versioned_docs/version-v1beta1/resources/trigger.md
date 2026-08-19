@@ -11,7 +11,6 @@ A Trigger is a persistent resource that automatically creates a new task for an 
 
 ```yaml
 kind: "commonagents.info/v1beta2/trigger"
-namespace: str
 name: str
 
 agent: str
@@ -30,28 +29,26 @@ enabled: bool
 ## Fields
 
 1. **`kind`** — Identifies this manifest as a Trigger. Must be `"commonagents.info/v1beta2/trigger"`.
-2. **`namespace`** — Identifies the namespace this trigger belongs to.
-3. **`name`** — Identifies the trigger uniquely within its namespace.
-4. **`agent`** — Identifies the agent that a new task is created for when the trigger fires. The referenced agent exists in the same namespace.
-5. **`owner`** — Identifies the user associated with all tasks created by this trigger. Used for identity, access control, and OAuth token resolution. The task runs with this user's identity and OAuth tokens — not the identity of the event sender.
-6. **`source.type`** — The event source type this trigger listens to (e.g. `"github"`, `"email"`, `"slack"`). Must match a receive runtime configured in the server.
-7. **`source.before`** — When present, CEL assert steps evaluated against the raw incoming event. If any assert fails, no task is created. Supports `event.payload.*` to access the raw event body.
-8. **`message`** — When present, used as the input message for the created task. Supports `{event.payload.*}` interpolation to include event data. When absent, the task is created with no initial message.
-9. **`inputs`** — When present, passed as structured input satisfying the agent's `parameters` schema. Required agent parameters must be present.
-10. **`enabled`** — When `true`, the trigger is active. When `false`, the trigger is inactive and no tasks are created.
+2. **`name`** — Identifies the trigger. A name identifies one resource (see [Concepts](../concepts.md#references-and-versions)).
+3. **`agent`** — Identifies the agent that a new task is created for when the trigger fires.
+4. **`owner`** — Identifies the user associated with all tasks created by this trigger. Used for identity, access control, and OAuth token resolution. The task runs with this user's identity and OAuth tokens — not the identity of the event sender.
+5. **`source.type`** — The event source type this trigger listens to (e.g. `"github"`, `"email"`, `"slack"`). Must match a receive runtime configured in the server.
+6. **`source.before`** — When present, CEL assert steps evaluated against the raw incoming event. If any assert fails, no task is created. Supports `event.payload.*` to access the raw event body.
+7. **`message`** — When present, used as the input message for the created task. Supports `{event.payload.*}` interpolation to include event data. When absent, the task is created with no initial message.
+8. **`inputs`** — When present, passed as structured input satisfying the agent's `parameters` schema. Required agent parameters must be present.
+9. **`enabled`** — When `true`, the trigger is active. When `false`, the trigger is inactive and no tasks are created.
 
 ## Status
 
-The runtime maintains the following read-only status fields on the trigger, not set by the caller:
+A trigger has no status.
 
-```yaml
-status:
-  last_triggered_at: str | None    # UTC ISO 8601
-  last_task_id: str | None
-  total_triggers: int
-  consecutive_failures: int
-  last_error: str | None
-```
+Status describes what is true of a resource now, and a trigger has nothing of that
+kind: unlike a [schedule](schedule.md), it has no cadence, so there is no next
+firing to compute. What a trigger has *done* — when it last fired, how many times,
+which tasks it produced, why an attempt failed — accumulates without the trigger
+changing, so a status carrying it would be a field whose value moves when nothing
+about the resource has. How an implementation records execution history, and
+whether it exposes one at all, is outside this specification.
 
 ## Trigger vs Event Subscription
 
@@ -96,8 +93,7 @@ message: "New PR from {event.payload.pull_request.user.login}: {event.payload.pu
 
 ```yaml
 kind: "commonagents.info/v1beta2/trigger"
-namespace: "support"
-name: "inbound-email"
+name: "inbound_email"
 agent: "support-agent"
 owner: "user:alice@example.com"
 
@@ -120,8 +116,7 @@ enabled: true
 
 ```yaml
 kind: "commonagents.info/v1beta2/trigger"
-namespace: "engineering"
-name: "new-github-issue"
+name: "new_github_issue"
 agent: "triage-agent"
 owner: "user:bot@company.com"
 

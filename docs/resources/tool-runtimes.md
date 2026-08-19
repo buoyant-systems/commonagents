@@ -50,7 +50,7 @@ The CEL expression has access to `context`, `input`, and `now`. See [CEL Referen
   description: "Returns the current UTC date."
   execute:
     cel:
-      expression: "{'date': now, 'namespace': context.agent.namespace}"
+      expression: "{'date': now, 'agent': context.agent.name}"
 ```
 
 ### `stateless_http`
@@ -97,7 +97,7 @@ actions:
 stateless_http:
   base_url: "https://api.example.com"
   headers:
-    Authorization: "Bearer {settings.api_key}"
+    Authorization: "Bearer {connection('example').service_auth().token}"
 ```
 
 #### Files and the mount
@@ -267,7 +267,7 @@ The following interpolation roots are available in `subscribe` and `unsubscribe`
 | Root | Description |
 |---|---|
 | `{parameters.*}` | Root tool parameters (populated from agent bindings) |
-| `{auth.<provider>()}` | Auth provider tokens |
+| `{connection('<provider>').service_auth().token}` | A credential for the deployment's machine identity; `.user_auth()` for the acting user's. See [Connections](../reference/parameters.md#connections) |
 | `{runtime.api_root}` | The runtime's public-facing webhook base URL |
 | `{subscription.id}` | Runtime-generated unique subscription identifier |
 | `{subscription.expires_at_ms}` | Subscription expiry as Unix milliseconds |
@@ -285,7 +285,7 @@ events:
           method: POST
           url: "https://www.googleapis.com/drive/v3/changes/watch"
           headers:
-            Authorization: "Bearer {auth.google()}"
+            Authorization: "Bearer {connection('google').user_auth().token}"
           json:
             id: "{subscription.id}"
             type: "web_hook"
@@ -296,7 +296,7 @@ events:
           method: POST
           url: "https://www.googleapis.com/drive/v3/channels/stop"
           headers:
-            Authorization: "Bearer {auth.google()}"
+            Authorization: "Bearer {connection('google').user_auth().token}"
           json:
             id: "{subscription.id}"
             resourceId: "{subscribe.resource_id}"
@@ -332,7 +332,7 @@ events:
         method: GET
         url: "https://example.com/feed/{parameters.feed_id}"
         headers:
-          Authorization: "Bearer {settings.api_key}"
+          Authorization: "Bearer {connection('example').service_auth().token}"
         detect: "response.items.filter(i, i.published_at > poll.last_fetched_at)"
     parameters:
       title: "item.title"

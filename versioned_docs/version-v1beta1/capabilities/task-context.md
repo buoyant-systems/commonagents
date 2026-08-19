@@ -30,7 +30,7 @@ When `phase` is `terminal`, `status.terminal_reason` explains why. It is one of:
 | `terminal_reason` | Meaning |
 |---|---|
 | `completed` | The task was finished by an explicit, positive action — never as a side effect of ordinary processing. A task that has simply delivered its output goes `idle`, not `terminal`. |
-| `errored` | The task halted on an unrecoverable error — an unreachable endpoint, an invalid configuration, or an exceeded resource limit (`max_turns`, `max_prompt_tokens`, `max_completion_tokens`, `max_age`, `max_tool_calls`). Details are recorded in the task's error field. |
+| `errored` | The task halted on an unrecoverable error — an unreachable endpoint, an invalid configuration, or an exceeded resource limit (`max_turns`, `max_prompt_tokens`, `max_completion_tokens`, `max_age`, `max_tool_calls`). A runtime records error detail internally; how much of it is exposed, and to whom, is implementation-defined. |
 | `restricted` | The task was permanently locked by a guardrail or middleware `lock_task` outcome. |
 
 `terminal_reason` MUST be `null` for any non-terminal task.
@@ -47,7 +47,6 @@ The **task context** is the subset of a running task's state that is available t
 context:
   agent:
     name: str              # The agent processing this task
-    namespace: str         # The namespace
     started_at: str        # UTC ISO 8601 task creation timestamp
 
   user:
@@ -88,12 +87,9 @@ context:
 
 ## TaskIO
 
-`input` and `output` are lists of `TaskIO` objects. Each `TaskIO` contains:
+`input` and `output` are lists of [TaskIO](./task-io.md) objects — the human-facing shape of one conversational message: the well-known `message`, `received_at` and `committed_at` keys plus dynamic keys from the agent's `parameters` schema (input entries) or `exposes` schema (output entries).
 
-- `message` — a list of content parts (the conversational text). This is a **well-known key** that MUST be present on every input.
-- Dynamic keys from the agent's `parameters` schema (for input entries) or `exposes` schema (for output entries)
-
-Each input turn carries its own snapshot of `message` and parameter values. CEL bindings reference them via:
+Each input entry carries its own snapshot of `message` and parameter values. CEL bindings reference them via:
 
 ```cel
 context.input[0].ticket_id
@@ -104,11 +100,11 @@ context.input[0].project_name
 
 Capabilities are keyed by their **function name** — the exact identifier the LLM uses when invoking the capability. Derived as follows:
 
-- **Single-capability tool** — sanitized agent capability reference (e.g. agent ref `slack-post` → key `slack_post`)
-- **Multi-capability tool** — sanitized ref + sanitized capability name (e.g. ref `github-file`, capability `read-chunk` → key `github_file_read_chunk`)
-- **Sub-agent delegation** — sanitized agent name (e.g. agent `research-agent` → key `research_agent`)
+- **Single-capability tool** — the agent capability reference (e.g. agent ref `slack_post` → key `slack_post`)
+- **Multi-capability tool** — the reference plus the capability name (e.g. ref `github_file`, capability `read_chunk` → key `github_file_read_chunk`)
+- **Sub-agent delegation** — the agent name (e.g. agent `research_agent` → key `research_agent`)
 
-Sanitization replaces hyphens with underscores to produce valid CEL identifiers.
+A name is already a valid CEL identifier, so nothing is substituted. A name identifies one resource, so no two capability keys collide.
 
 ## Accessing Context in CEL
 

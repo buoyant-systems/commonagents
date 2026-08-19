@@ -21,6 +21,8 @@ The following terms have specific meanings within the Common Agent Specification
 
 **Capability** — Anything an agent can do or respond to during a task. Capabilities come in three forms: actions (outbound execution), events (inbound signals), and delegation (invoking another agent as a sub-task). All three flow through the same middleware and guardrail pipeline.
 
+**Connection** — A named provider a tool's execution templates read configuration and credentials from, written as `connection('<provider>')`. It is a *name*, not a declaration: nothing about a connection appears in a manifest, and which credential answers the name — at what scope, added by whom, rotated how — is left to the implementation. The handle itself exposes only non-secret fields; credentials come from its `user_auth()` accessor (the tool acts as the user responsible for the task) or `service_auth()` (the tool acts as the deployment). Connections are never visible to the LLM and are confined to tool execution templates. See [Connections](./reference/parameters.md#connections).
+
 **Delegation** — When an agent invokes another agent as a capability, creating an autonomous child task. The child runs its own conversation loop and returns its result to the parent. From the LLM's perspective, delegation is indistinguishable from invoking any other action.
 
 **Event** — An inbound signal from an external platform that resumes an agent task. Events are the mechanism by which the outside world tells an agent that something relevant has happened — a PR comment, an email reply, a CI result. Events flow through the same middleware and guardrail pipeline as any other task input.

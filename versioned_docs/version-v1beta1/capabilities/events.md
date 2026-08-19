@@ -16,9 +16,9 @@ When a tool declares events, an agent subscribes to them automatically just by l
 When an agent's `capabilities` block references a tool, the agent is automatically subscribed to all events declared in that tool's `events` list. The tool's `message` template provides the default input, and the tool's `receive.filter` expression scopes which events are routed.
 
 ```yaml
-# Minimal: subscribe to all github-pr actions AND events
+# Minimal: subscribe to all github_pr actions AND events
 capabilities:
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
@@ -75,7 +75,7 @@ When a parameter has an agent binding, the allow list for that parameter name is
 ```yaml
 # Agent binds owner + repo → allow lists sealed; events routable from task start
 capabilities:
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"   # binding → sealed to this value
       repo:  "agent-mesh"        # binding → sealed to this value
@@ -89,7 +89,7 @@ The `include` list on a capability filters both actions and events by name. Any 
 
 ```yaml
 capabilities:
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
@@ -106,7 +106,7 @@ Use `has(event)` to write assertions that only apply to events:
 
 ```yaml
 capabilities:
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
@@ -125,7 +125,7 @@ Use `after` middleware with `has(event)` to transform the input only for event-o
 
 ```yaml
 capabilities:
-  github-pr:
+  github_pr:
     after:
       - transform: "has(event) ? '[ACTION REQUIRED] ' + input.message : input"
 ```
@@ -143,49 +143,16 @@ Tool event subscriptions resume **existing tasks**. Triggers act on raw event pa
 
 ## Subscription Lifecycle
 
-Event subscriptions have a defined lifecycle that controls when a task starts and stops receiving events.
+A subscription's lifetime is the task's lifetime — there is no separate expiry to configure or reason about.
 
-### When Subscriptions Are Active
+A subscription is created when a task starts and the agent's capabilities include a tool with events, and it is restored automatically whenever the task is rehydrated (for example after the runtime scales to zero). It is removed only when:
 
-A subscription is created when a task starts and the agent's capabilities include a tool with events. It is removed when any of the following occurs:
-
-- The task reaches a terminal state (error).
+- The task reaches a terminal phase.
 - The task is deleted.
-- The task is interrupted.
-- The subscription's timeout expires.
 
-When a task is interrupted, its subscriptions are removed immediately. However, the subscriptions are **automatically restored** when the task resumes processing (e.g. when it receives new user input and begins its next step). This prevents events from piling up during an interrupt, while allowing the task to resume event-driven behaviour naturally once it becomes active again.
+An idle task keeps receiving events indefinitely — inbound events are a first-class way to resume a conversation (warm resume), and a long-quiet task waking to a webhook is expected behaviour, not a leak. Interrupting a task does not remove its subscriptions: the task returns to idle, where event-driven inputs remain live. Runtimes bound the overall lifetime through the task lifecycle itself (for example an idle-lifespan policy that completes long-dormant tasks), never through per-subscription timers.
 
-### Timeouts
-
-Each event may declare a `timeout` (default subscription duration) and a `max_timeout` (hard cap). The agent may override the default via the capability's `event_timeout` field.
-
-The effective timeout is computed as:
-
-```
-effective = clamp(
-    agent.capabilities[tool].event_timeout  ??  tool.events[name].timeout  ??  ∞,
-    max = tool.events[name].max_timeout  ??  ∞
-)
-```
-
-When the effective timeout is finite, the runtime tracks a `last_activity_at` timestamp per subscription. Activity is defined as **any processing step** — any state transition within the task (input ingestion, LLM generation, capability execution, middleware evaluation, etc.). The timeout clock resets on each step. When `now - last_activity_at > effective_timeout`, the subscription is removed — but the task is not deleted or errored.
-
-A runtime implementation MAY also enforce its own maximum timeout independent of the tool and agent declarations.
-
-```yaml
-# Tool declares defaults and caps
-events:
-  - name: comment
-    timeout: "72h"         # default: 3 days
-    max_timeout: "168h"    # cap: 7 days
-    ...
-
-# Agent overrides
-capabilities:
-  github-pr:
-    event_timeout: "48h"         # effective: 48h (within cap)
-```
+In order to unsubscribe a task, transition it to a terminal phase.
 
 ### Webhook Signature Verification
 
@@ -194,11 +161,11 @@ The `webhook` receive type supports an optional `secret` field for HMAC signatur
 ```yaml
 receive:
   webhook:
-    secret: "{settings.github_webhook_secret}"
+    secret: "{connection('github').service_auth().webhook_secret}"
     filter: "event.payload.action == 'created'"
 ```
 
-When `secret` is present, the runtime validates the inbound webhook's `X-Hub-Signature-256` header against the resolved HMAC secret before evaluating the filter. The secret is resolved via the standard `{settings.*}` interpolation — the same mechanism used for API keys and auth tokens. If absent, no signature verification is performed.
+When `secret` is present, the runtime validates the inbound webhook's `X-Hub-Signature-256` header against the resolved HMAC secret before evaluating the filter. The secret is resolved through the same [connection](../reference/parameters.md#connections) surface that supplies a tool's credentials — a shared secret is a named field on the connection rather than anything written into the manifest. If absent, no signature verification is performed.
 
 Because different tools may use different secrets, verification happens during event routing at the per-tool level, not at the API ingestion endpoint.
 
@@ -206,24 +173,22 @@ Because different tools may use different secrets, verification happens during e
 
 ```yaml
 kind: "commonagents.info/v1beta2/agent"
-namespace: "engineering"
-name: "coder-agent"
+name: "coder_agent"
 description: "An autonomous software engineer that responds to PR feedback."
 prompt: |
   You are a software engineer. Open PRs, push code, and address
   review feedback by pushing new commits.
 
 capabilities:
-  github-file:
+  github_file:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
 
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
-    event_timeout: "48h"
     include: [create_pr, comment, review]
     before:
       - assert: "!has(event) || event.payload.comment.user.login != 'agentmesh-bot'"

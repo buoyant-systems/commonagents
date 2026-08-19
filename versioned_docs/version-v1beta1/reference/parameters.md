@@ -2,12 +2,21 @@
 id: parameters
 sidebar_position: 2
 title: Parameter Pipeline
-description: How parameters flow from settings through bindings, LLM generation, and interpolation in tool capabilities.
+description: How values reach a tool capability — parameters from bindings and LLM generation, configuration and credentials from connections — and how those values control event routing.
 ---
 
 # Parameter Pipeline
 
 The parameter pipeline describes how values reach a tool capability at execution time, and how those values control event routing. Understanding this pipeline is essential for writing secure tools that prevent prompt injection and enforce data integrity.
+
+Two independent surfaces supply a capability:
+
+| Surface | Declared in the manifest | Supplied by | Model-visible |
+|---|---|---|---|
+| **Parameters** | Yes — `parameters` schemas on the tool, its actions and its events | LLM generation, or an agent binding evaluated against task context | Yes, unless bound |
+| **Connections** | No — a provider is *named* at the point of use, never declared | The runtime, which resolves the named provider into configuration and credentials | Never |
+
+The separation is the point: a tool manifest is portable because it carries no secrets and no deployment-specific configuration. It names a provider and reads what it needs off whatever the runtime resolves that name to.
 
 ## Parameter Hierarchy
 
@@ -32,7 +41,7 @@ properties:
     description: str
     default: any | None        # presence determines required/optional
     require_binding: bool      # default: false
-    format: str | None         # e.g. "password", "uri", "date-time"
+    format: str | None         # e.g. "uri", "date-time"
     enum: list[any] | None
     # ... standard JSON Schema properties
 ```
@@ -63,9 +72,11 @@ A capability parameter can originate from four sources, in priority order (highe
 ```
 1. Agent Bindings      ← highest priority, always wins; hides parameter from LLM
 2. Middleware Bindings ← overrides capability-level bindings in invoke steps
-3. LLM Generation     ← blocked for parameters that have an agent binding
-4. Default Value      ← from the parameter schema's default field
+3. LLM Generation      ← blocked for parameters that have an agent binding
+4. Default Value       ← from the parameter schema's default field
 ```
+
+Connections are not on this list, because a connection is not a parameter source: it is a separate surface a template reads at the point of use, so its value never becomes an argument. Both surfaces are available to a tool, and although nothing stops a secret being declared as a parameter and supplied by a binding, a connection is the preferred mechanism as it supports dynamically signing tokens and keeps authentication out of the domain layer. See [Connections](#connections).
 
 ## Action Allow List
 
@@ -92,40 +103,63 @@ The allow list is maintained **per-tool, per-task**, keyed by **parameter name**
 After parameters are resolved, their values are interpolated into tool spec fields using `{variable.key}` syntax. See [CEL Reference](cel.md#interpolation-syntax) for the full interpolation roots.
 
 ```yaml
-# parameters.path resolved from LLM, settings.github.token from settings
-url: "https://api.github.com/repos/{settings.github.owner}/{parameters.repo}/contents/{parameters.path}"
+# parameters.repo and parameters.path are resolved from the LLM or a binding;
+# the host and the credential are read off the named connection.
+url: "{connection('github').base_url}/repos/{parameters.repo}/contents/{parameters.path}"
 headers:
-  Authorization: "Bearer {settings.github.token}"
+  Authorization: "Bearer {connection('github').service_auth().token}"
 ```
 
 Event `message` templates use `{event.payload.*}` interpolation — referencing the raw inbound payload directly. There is no extraction alias layer.
 
-## Settings
+## Connections
 
-Settings are namespace-level configuration values declared in the tool's `settings` schema. They are:
-- Configured by namespace administrators, not provided by the LLM.
-- The runtime MUST NOT allow the LLM to set any key declared in `settings`.
-- Referenced in tool fields via `{settings.<key>}`.
+A **connection** is a named provider a tool reads configuration and credentials from. `connection('github')` NAMES a provider and stops there: the manifest never says which credential answers that name, who owns it, or how it is stored. Resolution happens at execution time, and what it resolves to is implementation-defined.
 
-```yaml
-settings:
-  properties:
-    api_key:
-      title: "API Key"
-      format: "password"   # masked in UIs
-    base_url:
-      title: "API Base URL"
-      default: "https://api.example.com"
-```
+A tool may take any value as a parameter, secrets included; a connection is the preferred mechanism for every secret a tool needs. Because it resolves at the moment of use, a connection can mint a credential — refresh an OAuth token, sign a JWT, exchange a federated identity — rather than replay one fixed when the agent was configured, and the tool's parameter surface stays free of authentication.
 
-## Auth Tokens
-
-The `{auth.<provider>}` interpolation root injects tokens generated by the runtime's pluggable authentication system. Auth providers are configured at the server level, not in the tool manifest.
+`connection('<provider>')` returns a **public handle** — the connection's non-secret fields and nothing else. Read a field directly off it:
 
 ```yaml
-headers:
-  Authorization: "Bearer {auth.oauth2}"
+stateless_http:
+  base_url: "{connection('acme').base_url}"
+  headers:
+    X-Project: "{connection('acme').project_id}"
 ```
+
+A handle NEVER carries a credential. Credentials come only from its two member accessors, both of which return a value carrying `token` — the bearer token — alongside the connection's named public and secret fields:
+
+| Accessor | The tool acts as | Argument |
+|---|---|---|
+| `.user_auth(scopes?)` | The human responsible for the task | An optional list of scopes the call needs |
+| `.service_auth(selector?)` | The deployment itself — a machine identity | An optional provider-specific selector naming the target resource (an installation, tenant or organisation) |
+
+- Acting as the user — `"Bearer {connection('google').user_auth().token}"`
+- Acting as the user, narrowed to the scopes this call needs — `"Bearer {connection('google').user_auth(['drive.readonly']).token}"`
+- Acting as the deployment, against one installation — `"Bearer {connection('github_app').service_auth('buoyant-systems').token}"`
+- A named secret field rather than the bearer token — `"{connection('github').service_auth().webhook_secret}"`
+
+### Rules
+
+1. **A connection is never declared in a manifest.** There is no schema to write and no value to fill in. Which credential answers a provider name, at which scope, who may add it, and how it is rotated are all implementation-defined.
+2. **The provider name MUST be a literal string.** A computed name would let runtime data — ultimately, the model — choose which credential a call is made with, and would make the set of providers a manifest needs impossible to determine without running it.
+3. **`.user_auth()` has no user identity argument.** It takes an optional scope list and nothing else — the runtime injects the identity of the user responsible for the task. Whose credential a call spends is therefore never selectable from the manifest, and never from a value the model produced.
+4. **`connection()` and its accessors are confined to tool execution templates** — the `execute` blocks, the top-level runtime configuration blocks, and an event's `receive` fields (`subscribe`/`unsubscribe` calls, `poll` calls, and the webhook `secret`). They MUST NOT be available in agent prompts, bindings, middleware expressions, guardrails, or LLM-authored capability scripts.
+5. **Resolution failure MUST NOT degrade into an unauthenticated call.** If no connection resolves for the named provider, or `.user_auth()` has no grant from the acting user, the capability MUST NOT execute. Whether the runtime fails the invocation or holds the task until an administrator adds the connection (or the user grants consent) is implementation-defined; externally, a held task is [`phase: processing`](../capabilities/task-status.md) like any other non-progressing task.
+
+### Choosing a mechanism
+
+| The value is | Where it comes from |
+|---|---|
+| An API key or bearer token | `{connection('p').service_auth().token}` |
+| A token scoped to the person the agent is acting for | `{connection('p').user_auth().token}` |
+| Non-secret provider config — base URL, project, region, tenant | A public field: `{connection('p').base_url}` |
+| A shared secret that is not the bearer token, e.g. a webhook HMAC key | A named secret field: `{connection('p').service_auth().webhook_secret}` |
+| A fact about the calling user that the tool needs — their id, their email | A parameter bound to `context.user.id` or `context.user.email` |
+| Structured input from the caller | The agent's `parameters` schema, bound via `context.input[0].<key>` |
+| Something the model should reason about | A plain parameter, LLM-generated |
+
+Who the agent acts as is not in this table, because nothing supplies it. The row above reads `context.user` and passes it to a tool as data; it does not choose whose identity is there, and that identity is the one `.user_auth()` returns.
 
 ## Pipeline Example
 
@@ -137,6 +171,12 @@ parameters:
     repo_id:
       type: string
       require_binding: true    # validation constraint: binding MUST be provided
+
+stateless_http:
+  base_url: "https://api.github.com"
+  headers:
+    # Resolved per execution; never declared, never model-visible
+    Authorization: "Bearer {connection('github').service_auth().token}"
 
 actions:
   - name: create_issue
@@ -157,6 +197,7 @@ events:
           type: string
     receive:
       webhook:
+        secret: "{connection('github').service_auth().webhook_secret}"
         filter: >
           event.payload.action == 'assigned'
           && event.payload.repository.id == parameters.repo_id
@@ -164,7 +205,7 @@ events:
 
 # Agent manifest
 capabilities:
-  my-tool:
+  my_tool:
     bindings:
       repo_id: "context.input[0].repo_id"   # sealed — allow list immutable
       # assignee: not bound → starts empty; grows as LLM calls create_issue
@@ -172,7 +213,8 @@ capabilities:
 
 Execution flow for this example:
 1. `repo_id` → sealed from binding at task start. `issue_assigned` events for this repo are routable from the beginning, scoped to `repo_id` only.
-2. `assignee` → allow list starts empty. `issue_assigned` events for any assignee are **discarded**.
-3. LLM calls `create_issue` with `assignee: "alice"` → allow list for `assignee` becomes `{"alice"}`.
-4. `issue_assigned` events for Alice now route. Events for other assignees are **discarded**.
-5. LLM calls `create_issue` with `assignee: "bob"` → allow list becomes `{"alice", "bob"}`. Events for either now route.
+2. The `github` connection resolves at the first execution. Nothing about it appears in the LLM-facing schema, and no agent configuration references it.
+3. `assignee` → allow list starts empty. `issue_assigned` events for any assignee are **discarded**.
+4. LLM calls `create_issue` with `assignee: "alice"` → allow list for `assignee` becomes `{"alice"}`.
+5. `issue_assigned` events for Alice now route, once their signature verifies against the resolved webhook secret. Events for other assignees are **discarded**.
+6. LLM calls `create_issue` with `assignee: "bob"` → allow list becomes `{"alice", "bob"}`. Events for either now route.

@@ -47,7 +47,6 @@ The **task context** is the subset of a running task's state that is available t
 context:
   agent:
     name: str              # The agent processing this task
-    namespace: str         # The namespace
     started_at: str        # UTC ISO 8601 task creation timestamp
 
   user:
@@ -101,11 +100,11 @@ context.input[0].project_name
 
 Capabilities are keyed by their **function name** — the exact identifier the LLM uses when invoking the capability. Derived as follows:
 
-- **Single-capability tool** — sanitized agent capability reference (e.g. agent ref `slack-post` → key `slack_post`)
-- **Multi-capability tool** — sanitized ref + sanitized capability name (e.g. ref `github-file`, capability `read-chunk` → key `github_file_read_chunk`)
-- **Sub-agent delegation** — sanitized agent name (e.g. agent `research-agent` → key `research_agent`)
+- **Single-capability tool** — the agent capability reference (e.g. agent ref `slack_post` → key `slack_post`)
+- **Multi-capability tool** — the reference plus the capability name (e.g. ref `github_file`, capability `read_chunk` → key `github_file_read_chunk`)
+- **Sub-agent delegation** — the agent name (e.g. agent `research_agent` → key `research_agent`)
 
-Sanitization replaces hyphens with underscores to produce valid CEL identifiers.
+A name is already a valid CEL identifier, so nothing is substituted. A name identifies one resource, so no two capability keys collide.
 
 ## Accessing Context in CEL
 

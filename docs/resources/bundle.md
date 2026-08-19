@@ -33,17 +33,15 @@ templateVariables:
     default: "main"
 ---
 kind: "commonagents.info/v1/agent"
-namespace: "engineering"
-name: "coder-agent"
+name: "coder_agent"
 description: "An autonomous software engineering agent."
 prompt: |
   You are an expert software engineer...
 capabilities:
-  github-file: "*"
+  github_file: "*"
 ---
 kind: "commonagents.info/v1/tool"
-namespace: "engineering"
-name: "github-file"
+name: "github_file"
 description: "Reads and writes files in a GitHub repository."
 stateless_http:
   base_url: "https://api.github.com/repos/{template.owner}/project/{template.default_branch}"

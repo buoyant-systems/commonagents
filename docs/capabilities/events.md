@@ -16,9 +16,9 @@ When a tool declares events, an agent subscribes to them automatically just by l
 When an agent's `capabilities` block references a tool, the agent is automatically subscribed to all events declared in that tool's `events` list. The tool's `message` template provides the default input, and the tool's `receive.filter` expression scopes which events are routed.
 
 ```yaml
-# Minimal: subscribe to all github-pr actions AND events
+# Minimal: subscribe to all github_pr actions AND events
 capabilities:
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
@@ -75,7 +75,7 @@ When a parameter has an agent binding, the allow list for that parameter name is
 ```yaml
 # Agent binds owner + repo → allow lists sealed; events routable from task start
 capabilities:
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"   # binding → sealed to this value
       repo:  "agent-mesh"        # binding → sealed to this value
@@ -89,7 +89,7 @@ The `include` list on a capability filters both actions and events by name. Any 
 
 ```yaml
 capabilities:
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
@@ -106,7 +106,7 @@ Use `has(event)` to write assertions that only apply to events:
 
 ```yaml
 capabilities:
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
@@ -125,7 +125,7 @@ Use `after` middleware with `has(event)` to transform the input only for event-o
 
 ```yaml
 capabilities:
-  github-pr:
+  github_pr:
     after:
       - transform: "has(event) ? '[ACTION REQUIRED] ' + input.message : input"
 ```
@@ -161,11 +161,11 @@ The `webhook` receive type supports an optional `secret` field for HMAC signatur
 ```yaml
 receive:
   webhook:
-    secret: "{settings.github_webhook_secret}"
+    secret: "{connection('github').service_auth().webhook_secret}"
     filter: "event.payload.action == 'created'"
 ```
 
-When `secret` is present, the runtime validates the inbound webhook's `X-Hub-Signature-256` header against the resolved HMAC secret before evaluating the filter. The secret is resolved via the standard `{settings.*}` interpolation — the same mechanism used for API keys and auth tokens. If absent, no signature verification is performed.
+When `secret` is present, the runtime validates the inbound webhook's `X-Hub-Signature-256` header against the resolved HMAC secret before evaluating the filter. The secret is resolved through the same [connection](../reference/parameters.md#connections) surface that supplies a tool's credentials — a shared secret is a named field on the connection rather than anything written into the manifest. If absent, no signature verification is performed.
 
 Because different tools may use different secrets, verification happens during event routing at the per-tool level, not at the API ingestion endpoint.
 
@@ -173,20 +173,19 @@ Because different tools may use different secrets, verification happens during e
 
 ```yaml
 kind: "commonagents.info/v1beta2/agent"
-namespace: "engineering"
-name: "coder-agent"
+name: "coder_agent"
 description: "An autonomous software engineer that responds to PR feedback."
 prompt: |
   You are a software engineer. Open PRs, push code, and address
   review feedback by pushing new commits.
 
 capabilities:
-  github-file:
+  github_file:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
 
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"

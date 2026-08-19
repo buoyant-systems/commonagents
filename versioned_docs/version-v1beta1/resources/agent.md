@@ -13,14 +13,13 @@ An agent is defined by a YAML file with the following schema:
 
 ```yaml
 kind: "commonagents.info/v1beta2/agent"
-namespace: str
 name: str
 description: str
 prompt: str
 
 model: str | None
 priority: int | None
-mount: "none" | "task" | "agent" | "workspace"   # default: "none"
+mount: list["workspace" | "agent" | "task"]      # default: ["task"]; [] means none
 
 limits:
   max_turns: int | None
@@ -43,7 +42,6 @@ capabilities:
     # Capability (object with at least one field):
     #     include: list[str] | None
     #     bindings: dict[str, str] | None
-    #     event_timeout: str | None
     #     before_first: list[MiddlewareStep] | None
     #     before: list[MiddlewareStep] | None
     #     after: list[MiddlewareStep] | None
@@ -63,10 +61,9 @@ exposes:
 ### Identity
 
 1. **`kind`** — Identifies this manifest as an Agent. Must be `"commonagents.info/v1beta2/agent"`.
-2. **`namespace`** — Identifies the namespace this agent belongs to.
-3. **`name`** — Identifies the agent uniquely within its namespace.
-4. **`description`** — A human-readable description of the agent's purpose.
-5. **`prompt`** — The system instruction provided to the LLM. The runtime MAY augment this with additional context.
+2. **`name`** — Identifies the agent. A name identifies one resource (see [Concepts](../concepts.md#references-and-versions)).
+3. **`description`** — A human-readable description of the agent's purpose.
+4. **`prompt`** — The system instruction provided to the LLM. The runtime MAY augment this with additional context.
 
    Supports `{expression}` interpolation evaluated at task execution time. Available roots:
 
@@ -81,17 +78,18 @@ exposes:
 
 ### Model & Priority
 
-7. **`model`** — When present, specifies the model the runtime should use for this agent.
-8. **`priority`** — When present, specifies the scheduling priority for tasks created from this agent.
-9. **`mount`** — Controls the agent's access to the workspace mount. Defaults to `"none"` when absent. See [Mount](mount.md).
-   - `"none"` — no mount access. `mount.*` template variables and `mount.read()`/`mount.write()` CEL functions are not available.
-   - `"task"` — mount prefix is scoped to the individual task.
-   - `"agent"` — mount prefix is scoped to the agent (shared across tasks).
-   - `"workspace"` — mount prefix is scoped to the entire workspace.
+6. **`model`** — When present, specifies the model the runtime should use for this agent.
+7. **`priority`** — When present, specifies the scheduling priority for tasks created from this agent.
+8. **`mount`** — The list of storage mount scopes the agent addresses. An **absent** field defaults to `["task"]` — task scope is where a user's attachment lands, where generated media is written, and where a delegated result arrives, so an agent that says nothing about files still receives them. An **explicit empty list** is the only way to say no mount access: `mount.*` template variables and the `mount.read()`/`mount.write()`/`mount.list()` CEL functions are then unavailable, and file references do not resolve. The two MUST stay distinguishable wherever the document is carried. Each entry contributes one virtual root that files are referenced under. An unrecognised entry MUST be rejected, and so MUST a repeated one. See [Mount](mount.md).
+   - `"workspace"` — the workspace's shared scope, referenced as `workspace://name`. Every agent enabling it addresses the same files.
+   - `"agent"` — this agent's own scope, referenced as `agent://name`. Persists across every task the agent runs.
+   - `"task"` — the running task's scope, referenced as `task://name`. Confined to one conversation.
+
+   The scopes are independent, so `mount: [workspace, agent]` addresses both.
 
 ### Limits
 
-10. **`limits`** — When present, defines resource limits for tasks created from this agent. When a limit is exceeded, the runtime terminates the task with `terminal_reason: errored` (see [Task Lifecycle](../capabilities/task-context.md#termination)).
+9. **`limits`** — When present, defines resource limits for tasks created from this agent. When a limit is exceeded, the runtime terminates the task with `terminal_reason: errored` (see [Task Lifecycle](../capabilities/task-context.md#termination)).
     - `max_turns` — maximum number of LLM turns.
     - `max_prompt_tokens` — cumulative prompt token limit across all LLM calls.
     - `max_completion_tokens` — cumulative completion token limit.
@@ -100,7 +98,7 @@ exposes:
 
 ### Parameters
 
-11. **`parameters`** — When present, defines the structured input this agent accepts. The schema itself is static — no interpolation. Uses [`ParameterSchema`](../reference/parameters.md) semantics:
+10. **`parameters`** — When present, defines the structured input this agent accepts. The schema itself is static — no interpolation. Uses [`ParameterSchema`](../reference/parameters.md) semantics:
     - A property **without** a `default` is required — the caller must supply a value.
     - A property **with** a `default` is optional — the default is used when the value is absent.
     - `require_binding: true` — a **validation constraint**: the parent agent invoking this sub-agent must supply a binding for this parameter. Without a binding the configuration is invalid. It is the binding that hides the parameter from the LLM.
@@ -114,7 +112,7 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
 - **Tool events** — inbound signals from external platforms. When a tool is declared as a capability, all of its events are automatically subscribed. Events inject input into the task using the tool's `message` template, scoped by the agent's bindings. See [Events](../capabilities/events.md).
 - **Agent delegation** — another agent exposed as a capability. When invoked, the runtime creates an autonomous child task that runs its own conversation loop and returns its output as a capability result. From the LLM's perspective this is indistinguishable from a tool action.
 
-12. **`capabilities`** — Defines the capabilities available to this agent. Each key references a tool or another agent. Each value is either `"*"` or a `Capability` object.
+11. **`capabilities`** — Defines the capabilities available to this agent. Each key references a tool or another agent, in one of the forms given in [References and Versions](../concepts.md#references-and-versions), and MAY carry an `@<version>` suffix to pin that capability to exact content rather than to whatever is current. Each value is either `"*"` or a `Capability` object.
 
     **`"*"` (wildcard)** — All actions are visible to the LLM and all events are subscribed, with no middleware and no bindings.
 
@@ -123,7 +121,6 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
     ```yaml
     include: list[str] | None
     bindings: dict[str, str] | None
-    event_timeout: str | None        # duration string — overrides tool event timeout
     before_first: list[MiddlewareStep] | None
     before: list[MiddlewareStep] | None
     after: list[MiddlewareStep] | None
@@ -131,7 +128,6 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
 
     - **`include`** — When present, only the named actions **and events** are active. Actions not in the list are hidden from the LLM; events not in the list are not subscribed. An explicit empty list `[]` hides all actions and subscribes to no events. No interpolation.
     - **`bindings`** — Each value is a full **CEL expression** (not `{...}` interpolation) evaluated at invocation time. Available roots: `context`, `runtime`, `now`. Binding values populate `parameters.*` which the tool's event `receive.filter` expressions can reference to scope which events are routed to this agent. See [Bindings](../capabilities/bindings.md).
-    - **`event_timeout`** — optional duration string (e.g. `"24h"`, `"48h"`). Overrides the tool's per-event `timeout` for all events on this capability. The effective timeout is clamped to the tool's `max_timeout` when one is declared. If absent, the tool's `timeout` is used as the default. See [Events — Subscription Lifecycle](../capabilities/events.md#subscription-lifecycle).
     - **`before_first`** — Middleware steps evaluated before the first invocation of this capability in a task only.
     - **`before`** — Middleware steps evaluated before every action invocation **and** before every incoming event activation. When evaluated for an event, the `event` variable is available in CEL scope. Use `!has(event) || <condition>` for assertions that should only apply to events. See [Events](../capabilities/events.md).
     - **`after`** — Middleware steps evaluated after every action invocation, before the result is returned to the LLM. Also evaluated after each incoming event is formatted, before it is committed as input. Use `has(event)` to apply transforms only to event-originated turns.
@@ -144,53 +140,52 @@ When a capability key references another agent, the runtime presents it to the L
 
 ### Model Capabilities
 
-13. **`model_capabilities`** — Model-native capabilities the agent can use. They cover both model-internal features, like web-search, and input and output modalities.
+12. **`model_capabilities`** — Model-native capabilities the agent can use. They cover both model-internal features, like web_search, and input and output modalities.
 
-    - `"web-search"` — Enables LLM-native web search grounding.
-    - `"image-generation"` — Enables LLM-native image generation. **Requires** a non-`none` `mount` — generated media is written to mount storage.
-    - `"audio-generation"` — Enables LLM-native audio generation. **Requires** a non-`none` `mount`.
-    - `"video-generation"` — Enables LLM-native video generation. **Requires** a non-`none` `mount`.
-    - `"image-understanding"` — Enables the agent to directly receive images as input. Note that the model doesn't need to understand images to be able to interact with them (it can still move them, and pass them through normal capabilities).
-    - `"audio-understanding"` — Enables the agent to directly receive audio as input.
-    - `"video-understanding"` — Enables the agent to directly receive video as input.
-    - `"pdf-understanding"` — Enables the agent to directly receive PDF (`application/pdf`) files as input.
-    - `"file-understanding"` — Enables the agent to directly receive file input of any MIME type, not only the recognised media modalities. This is an escape hatch for models known to accept arbitrary attachments; honoured only where the wire protocol can carry arbitrary bytes.
+    - `"web_search"` — Enables LLM-native web search grounding.
+    - `"image_generation"` — Enables LLM-native image generation. **Requires** `task` in `mount` — generated media is a platform write, and `task://` is its only destination.
+    - `"audio_generation"` — Enables LLM-native audio generation. **Requires** `task` in `mount`.
+    - `"video_generation"` — Enables LLM-native video generation. **Requires** `task` in `mount`.
+    - `"image_understanding"` — Enables the agent to directly receive images as input. Note that the model doesn't need to understand images to be able to interact with them (it can still move them, and pass them through normal capabilities).
+    - `"audio_understanding"` — Enables the agent to directly receive audio as input.
+    - `"video_understanding"` — Enables the agent to directly receive video as input.
+    - `"pdf_understanding"` — Enables the agent to directly receive PDF (`application/pdf`) files as input.
+    - `"file_understanding"` — Enables the agent to directly receive file input of any MIME type, not only the recognised media modalities. This is an escape hatch for models known to accept arbitrary attachments; honoured only where the wire protocol can carry arbitrary bytes.
 
     A model capability name may not duplicate a key in the `capabilities` map. If a runtime or model doesn't support a particular model capability, it MAY reject agent manifests at write time, and MUST warn at task creation time.  
 
 ### Guardrails
 
-14. **`guardrails`** — When present, defines middleware steps evaluated at the agent's input/output boundary. `before` steps are evaluated when the agent receives input; `after` steps are evaluated before the agent responds. Uses the same middleware step field semantics as capability middleware. See [Middleware](../capabilities/middleware.md).
+13. **`guardrails`** — When present, defines middleware steps evaluated at the agent's input/output boundary. `before` steps are evaluated when the agent receives input; `after` steps are evaluated before the agent responds. Uses the same middleware step field semantics as capability middleware. See [Middleware](../capabilities/middleware.md).
 
 ### Exposes
 
-15. **`exposes`** — When present, the runtime appends these key-value pairs to the response returned to the caller. Each value is a **full CEL expression** evaluated against the task context. Available roots: `context`, `input`, `output`, `now`, `runtime`. See [Task Context](../capabilities/task-context.md).
+14. **`exposes`** — When present, the runtime appends these key-value pairs to the response returned to the caller. Each value is a **full CEL expression** evaluated against the task context. Available roots: `context`, `input`, `output`, `now`, `runtime`. See [Task Context](../capabilities/task-context.md).
 
 ## Example
 
 ```yaml
 kind: "commonagents.info/v1beta2/agent"
-namespace: "engineering"
-name: "coder-agent"
+name: "coder_agent"
 description: "An autonomous software engineer that responds to PR feedback."
 prompt: |
   You are an expert software engineer helping {context.user.email}.
   Open pull requests, push commits, and address review feedback.
 
 model: "gemini/gemini-2.5-flash"
-mount: agent     # mount.read()/mount.write() enabled, prefix scoped to agent
+mount: [agent]   # mount.read()/mount.write() enabled; files are agent://name
 
 limits:
   max_turns: 20
   max_age: "2h"
 
 capabilities:
-  github-file:
+  github_file:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"
 
-  github-pr:
+  github_pr:
     bindings:
       owner: "buoyant-systems"
       repo:  "agent-mesh"

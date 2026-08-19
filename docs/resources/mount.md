@@ -65,7 +65,7 @@ When an agent's `mount` list is non-empty:
 
 - **CEL I/O functions** — `mount.read()`, `mount.write()` and `mount.list()` are available in CEL tool expressions.
 - **File references** — capability parameters declared `type: file` accept reference URIs, so files pass between capabilities without their contents entering the conversation.
-- **Multimedia output** — when `model_capabilities` includes `image-generation`, `audio-generation` or `video-generation`, the runtime writes generated media to the mount. These capabilities **require** `task` in `mount`.
+- **Multimedia output** — when `model_capabilities` includes `image_generation`, `audio_generation` or `video_generation`, the runtime writes generated media to the mount. These capabilities **require** `task` in `mount`.
 
 ## Additional `mount.*` values
 
@@ -106,21 +106,19 @@ This is the axis `model_capabilities` reasons about: a user's attachment and a c
 
 ```yaml
 kind: commonagents.info/v1beta2/agent
-namespace: engineering
 name: coder
 mount: [workspace, agent]     # workspace:// and agent:// resolve; task:// does not
 
 capabilities:
-  summarise-doc: "*"
+  summarise_doc: "*"
 ```
 
-This agent's model addresses `workspace://design.md` and `agent://skill.md` by name — the shared corpus and its own accumulated files — and passes either to `summarise-doc` as a file reference. Having not declared `task`, it cannot be sent an attachment or generate media.
+This agent's model addresses `workspace://design.md` and `agent://skill.md` by name — the shared corpus and its own accumulated files — and passes either to `summarise_doc` as a file reference. Having not declared `task`, it cannot be sent an attachment or generate media.
 
 ### A memory tool using the CEL mount functions
 
 ```yaml
 kind: commonagents.info/v1beta2/tool
-namespace: default
 name: memory
 description: Key-value memory for agents, persisted to the agent's mount.
 
