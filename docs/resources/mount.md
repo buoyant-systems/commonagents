@@ -96,6 +96,8 @@ Two unrelated things are settled about a mount operation. **Who decided it** set
 
 This is the axis `model_capabilities` reasons about: a user's attachment and a capability's `mount.read()` are gated identically on the way into the model's context.
 
+An implementation MAY deliver the text a non-text format carries in place of withholding it: the words in a PDF or a word-processor document are text, and text needs no declared modality. Where it does, it MUST tell the model that what it received is an extract rather than the document. Which formats an implementation reads this way is implementation-defined. An agent that requires the document itself declares the media-understanding capability for it, and that declaration takes precedence.
+
 **Where the file resides** has only one answer for a user's attachment, a model's output, and a delegated sub-task's result: the `task` scope. They belong to the exchange they arrived in, and the other two scopes outlive it. An agent that does not enable `task` MUST therefore be refused rather than quietly redirected, and the user having decided does not exempt the attachment — what is missing is not a capability but somewhere for the file to be. That is why `task` is the default mount value.
 
 **Moving files is not opening them.** An agent that declares no media-understanding capability can still list, copy, rename, download and upload files, and pass references between capabilities. Fetching a file into the mount attaches nothing to the model's context; only reading one does.

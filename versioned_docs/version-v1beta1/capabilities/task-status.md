@@ -42,12 +42,14 @@ A **Task Notification** is an outstanding call to action for the task's **respon
 Each notification serializes as:
 
 ```yaml
-kind: auth_required | review_required
+kind: user_auth_required | review_required
 since: str                  # UTC ISO 8601 — when the notification was raised
-provider: str               # auth_required only — the provider being connected
+provider: str               # user_auth_required only — the provider being connected
 ```
 
-1. **`auth_required`** — the task is paused until the responsible user grants an authorisation (for example, a delegated sign-in consent). The notification MUST name the `provider` being connected. How the consent is completed is implementation-defined.
+1. **`user_auth_required`** — the task is paused until the responsible user authorises a provider it acts through, as themselves (for example, a delegated sign-in). The notification MUST name the `provider` being connected, and there MUST be **one per authorisation, not one per blocked operation**: a task may have several operations waiting on the same one, and they are a single call to action that granting it resolves together. How the authorisation is completed is implementation-defined.
+
+    It is named for who must act. A host may equally be unable to proceed because the *host* is missing configuration — no credential for a provider, an application nobody has installed — and that is NOT this notification and not a notification at all: the responsible user cannot supply it, so it is visible only as `phase: processing` (see 3).
 2. **`review_required`** — a [`review(user)`](../reference/cel.md#reviewuser-str) middleware step awaits a decision **and the reviewing user is the task's responsible user**. A review addressed to anyone else is NOT a notification: routing it to its reviewer is the runtime's responsibility, and externally it is visible only as `phase: processing`. How the decision is made is implementation-defined.
 3. Nothing else is a notification. Any other reason a task is not progressing — internal waits, host-side configuration, capacity — is visible only as `phase: processing`: the task is busy, and how is the host's business.
 4. Terminal outcomes and new output are deliberately not notifications: `terminal_reason` already reports the former, and a `revision` change with the [messages](./task-io.md#messages) list already conveys the latter.

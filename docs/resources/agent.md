@@ -22,11 +22,11 @@ priority: int | None
 mount: list["workspace" | "agent" | "task"]      # default: ["task"]; [] means none
 
 limits:
-  max_turns: int | None
+  max_llm_turns: int | None
   max_prompt_tokens: int | None
   max_completion_tokens: int | None
   max_age: str | None        # duration string, e.g. "2h", "30m"
-  max_tool_calls: int | None
+  max_capability_uses: int | None
 
 parameters:
   type: "object"
@@ -90,11 +90,11 @@ exposes:
 ### Limits
 
 9. **`limits`** — When present, defines resource limits for tasks created from this agent. When a limit is exceeded, the runtime terminates the task with `terminal_reason: errored` (see [Task Lifecycle](../capabilities/task-context.md#termination)).
-    - `max_turns` — maximum number of LLM turns.
+    - `max_llm_turns` — maximum number of LLM turns.
     - `max_prompt_tokens` — cumulative prompt token limit across all LLM calls.
     - `max_completion_tokens` — cumulative completion token limit.
     - `max_age` — wall-clock duration limit (e.g. `"2h"`, `"30m"`).
-    - `max_tool_calls` — total number of capability invocations.
+    - `max_capability_uses` — total number of capability invocations.
 
 ### Parameters
 
@@ -102,7 +102,10 @@ exposes:
     - A property **without** a `default` is required — the caller must supply a value.
     - A property **with** a `default` is optional — the default is used when the value is absent.
     - `require_binding: true` — a **validation constraint**: the parent agent invoking this sub-agent must supply a binding for this parameter. Without a binding the configuration is invalid. It is the binding that hides the parameter from the LLM.
-    - `message` is a **well-known key** of type `list[ContentPart]`. It is the primary conversational content for a task turn. `message` does not need to be declared in the schema — it is implicitly part of every input. However, `message` MUST be present on every input, either provided explicitly by the caller or resolved from a `default` declared in the schema. If `message` is absent and no default is declared, the input is invalid. An agent MAY declare `message` in its schema solely to specify a `default` value.
+    - `message` is a **well-known key** of type `list[ContentPart]`. It is the primary conversational content for a task turn. `message` does not need to be declared in the schema — it is implicitly part of every input. An agent MAY declare `message` in its schema solely to specify a `default` value.
+    - `attachments` is the **second well-known key**, of type `list[str]`, each entry a file reference in the agent's own mount written `{scope}://{name}` (see [Mount](mount.md)). It is a key of the input, so it reaches an agent by every route an input does. It is available only to an agent whose `mount` is non-empty — an agent addressing no mount holds no reference — and such an agent MUST NOT declare it even to give it a default. Each entry becomes a `file` content part on the input's `message`, making it an attachment the receiving model is offered, subject to that agent's own input modalities (see [Content](../capabilities/content.md)). An agent wanting a file as data instead declares an ordinary `type: file` parameter, which its model never sees unless a capability reads it.
+    - **These two names are reserved**, and a schema MAY declare either for one purpose only: to give it a `default`. A declaration carrying anything else MUST be rejected. No other name is reserved.
+    - Both follow the same required/optional rule as every other parameter, and there is no rule above it: a parameter is required unless a `default` or a capability **binding** supplies it. A capability MAY bind either name. `attachments` carries an empty-list default by construction and is never required; `message` is required only where nothing supplies it. It follows that an agent every one of whose parameters is defaulted or bound accepts an input carrying **nothing at all** — being called is the whole of the instruction — and an implementation MUST NOT impose a minimum on what an input must contain, nor discard one for carrying no `message`.
 
 ### Capabilities
 
@@ -110,7 +113,7 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
 
 - **Tool actions** — outbound functions backed by a real execution backend (HTTP, CEL, MCP, etc.). The LLM never sees the raw tool — only its individual named actions, presented as callable functions.
 - **Tool events** — inbound signals from external platforms. When a tool is declared as a capability, all of its events are automatically subscribed. Events inject input into the task using the tool's `message` template, scoped by the agent's bindings. See [Events](../capabilities/events.md).
-- **Agent delegation** — another agent exposed as a capability. When invoked, the runtime creates an autonomous child task that runs its own conversation loop and returns its output as a capability result. From the LLM's perspective this is indistinguishable from a tool action.
+- **Agent delegation** — another agent exposed as a capability. When invoked, the runtime creates an autonomous child task that runs its own conversation loop and returns its output as a capability result. Unlike a tool action it is reached by delegating THROUGH the agent rather than calling it, because a delegation carries more than the sub-agent's own parameters — see [Sub-Agent Delegation](#sub-agent-delegation).
 
 11. **`capabilities`** — Defines the capabilities available to this agent. Each key references a tool or another agent, in one of the forms given in [References and Versions](../concepts.md#references-and-versions), and MAY carry an `@<version>` suffix to pin that capability to exact content rather than to whatever is current. Each value is either `"*"` or a `Capability` object.
 
@@ -127,7 +130,7 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
     ```
 
     - **`include`** — When present, only the named actions **and events** are active. Actions not in the list are hidden from the LLM; events not in the list are not subscribed. An explicit empty list `[]` hides all actions and subscribes to no events. No interpolation.
-    - **`bindings`** — Each value is a full **CEL expression** (not `{...}` interpolation) evaluated at invocation time. Available roots: `context`, `runtime`, `now`. Binding values populate `parameters.*` which the tool's event `receive.filter` expressions can reference to scope which events are routed to this agent. See [Bindings](../capabilities/bindings.md).
+    - **`bindings`** — Each value is a template whose `{...}` tokens are CEL expressions evaluated at invocation time. A value that is exactly one token delivers that expression's result with its type intact; one mixing literal text or several tokens composes a string. Available roots: `context`, `runtime`, `now`. Binding values populate `parameters.*` which the tool's event `receive.filter` expressions can reference to scope which events are routed to this agent. See [Bindings](../capabilities/bindings.md).
     - **`before_first`** — Middleware steps evaluated before the first invocation of this capability in a task only.
     - **`before`** — Middleware steps evaluated before every action invocation **and** before every incoming event activation. When evaluated for an event, the `event` variable is available in CEL scope. Use `!has(event) || <condition>` for assertions that should only apply to events. See [Events](../capabilities/events.md).
     - **`after`** — Middleware steps evaluated after every action invocation, before the result is returned to the LLM. Also evaluated after each incoming event is formatted, before it is committed as input. Use `has(event)` to apply transforms only to event-originated turns.
@@ -136,7 +139,20 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
 
 ### Sub-Agent Delegation
 
-When a capability key references another agent, the runtime presents it to the LLM as a function with a single string `message` parameter. When invoked, a child task is created that runs autonomously; its output or error is returned to the parent as a capability result.
+When a capability key references another agent, the runtime presents it to the LLM as a value to delegate through rather than a function to call:
+
+```
+analyst.send("summarise this")
+analyst.send("and this one", ["workspace://contract.pdf"]).reply(task_id)
+```
+
+`send` supplies the sub-agent's input — `message` first, then `attachments`, then its own declared parameters — so a parent hands files over exactly as any caller of that agent would, and delegation adds no key of its own. `reply` names an existing child to continue instead of creating one; it is a call rather than an argument so that it cannot collide with a name the sub-agent declared. The two MAY be written in **any order** — a capability call is a value the script builds, so nothing has happened when the next is read.
+
+When the call is made, a child task is created that runs autonomously; its output or error is returned to the parent as a capability result.
+
+A file passed in `attachments` is a reference and never bytes. It reaches the child as a `file` content part on its input message, so it is subject to the child's own input modalities exactly as any other content is — a file whose modality the child has not declared is named to it and does not reach it as the document it is (see [Mount](mount.md)). A reference passed to a parameter the sub-agent declares `type: file` is an ordinary input value instead, for the sub-agent's own capabilities to act on. Either MAY be supplied by a binding rather than by the model, which is how a parent hands over a file it chose rather than one the model named.
+
+A reference given to the child MUST resolve in the **child's** mount, because a reference only ever names the mount of the agent holding it. See [Content](../capabilities/content.md) for what crossing a task boundary requires of the reference, and [Mount](mount.md) for the scopes one can name.
 
 ### Model Capabilities
 
@@ -176,7 +192,7 @@ model: "gemini/gemini-2.5-flash"
 mount: [agent]   # mount.read()/mount.write() enabled; files are agent://name
 
 limits:
-  max_turns: 20
+  max_llm_turns: 20
   max_age: "2h"
 
 capabilities:

@@ -22,11 +22,11 @@ priority: int | None
 mount: list["workspace" | "agent" | "task"]      # default: ["task"]; [] means none
 
 limits:
-  max_turns: int | None
+  max_llm_turns: int | None
   max_prompt_tokens: int | None
   max_completion_tokens: int | None
   max_age: str | None        # duration string, e.g. "2h", "30m"
-  max_tool_calls: int | None
+  max_capability_uses: int | None
 
 parameters:
   type: "object"
@@ -90,11 +90,11 @@ exposes:
 ### Limits
 
 9. **`limits`** — When present, defines resource limits for tasks created from this agent. When a limit is exceeded, the runtime terminates the task with `terminal_reason: errored` (see [Task Lifecycle](../capabilities/task-context.md#termination)).
-    - `max_turns` — maximum number of LLM turns.
+    - `max_llm_turns` — maximum number of LLM turns.
     - `max_prompt_tokens` — cumulative prompt token limit across all LLM calls.
     - `max_completion_tokens` — cumulative completion token limit.
     - `max_age` — wall-clock duration limit (e.g. `"2h"`, `"30m"`).
-    - `max_tool_calls` — total number of capability invocations.
+    - `max_capability_uses` — total number of capability invocations.
 
 ### Parameters
 
@@ -176,7 +176,7 @@ model: "gemini/gemini-2.5-flash"
 mount: [agent]   # mount.read()/mount.write() enabled; files are agent://name
 
 limits:
-  max_turns: 20
+  max_llm_turns: 20
   max_age: "2h"
 
 capabilities:

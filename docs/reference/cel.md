@@ -131,15 +131,8 @@ Lists the agent's files as sorted reference URIs, across every enabled root.
 
 ## LLM Capability Script Functions
 
-The LLM capability script is the most restricted CEL environment — it is authored by the LLM at runtime and is **untrusted**. The LLM cannot access `context`, `connection()`, `mount.*` or any other privileged variable or function. The only functions available are the agent's declared capabilities and the built-in functions below.
+The LLM capability script is the most restricted CEL environment — it is authored by the LLM at runtime and is **untrusted**. The only functions available to the LLM are the agent's declared capabilities and model_capabilities. The exact schema of how these are exposed is left to the implementation.
 
-### `<capability_name>(args: map) -> any`
-
-Invokes a capability with the given arguments. The capability name is the function name derived from the agent's capability configuration (see [Task Context — Capability Keys](../capabilities/task-context.md#capability-keys)).
-
-```cel
-github_file_read_chunk({"path": "README.md", "start_line": 1, "end_line": 50})
-```
 
 ### File references
 

@@ -23,11 +23,15 @@ capabilities:
       token: "context.user.id"              # from authenticated user
   zendesk:
     bindings:
-      ticket_id: "context.input[0].ticket_id"
-      customer_email: "context.user.email"
+      ticket_id: "{context.input[0].ticket_id}"
+      customer_email: "{context.user.email}"
+      labels: "{context.input[0].labels}"
+      branch: "agent/{context.agent.name}/{now}"
 ```
 
-Each key MUST correspond to an explicitly declared `parameters` field in the tool schema. Values MUST be valid CEL expressions evaluated against the [task context](task-context.md).
+Each key MUST correspond to an explicitly declared `parameters` field in the tool schema. A value is a template: each `{...}` token is a CEL expression evaluated against the [task context](task-context.md), and text outside a token is literal.
+
+A binding carries the **type** its expression produced. A value that is exactly one `{expression}` delivers that result with its type intact — for example `labels` above is a list. A value carrying literal text around the token, or more than one token, is composition and produces a string, as `branch` above does. An implementation MUST NOT render a non-string result back into text.
 
 ## Evaluation
 
@@ -57,7 +61,7 @@ Note: it is the **binding** (not this flag) that hides the parameter from the LL
 
 All tool parameters (root, per-action, per-event) share a single **action allow list** namespace keyed by parameter name. `receive.filter` expressions reference `parameters.*` from this allow list to scope event routing.
 
-Agent bindings contribute to the allow list directly. A binding on `owner` adds the bound value to the allow list for `owner`, making it available for any event filter that references `parameters.owner`.
+Agent bindings contribute to the allow list directly. A binding on `owner` adds the bound value to the allow list for `owner`, making it available for any event filter that references `parameters.owner`. The allow list matches on text, a binding with a non-text type is rendered to a string first.
 
 ```yaml
 # Tool manifest (excerpt)
@@ -145,7 +149,7 @@ Middleware `invoke` steps also support bindings, using the same CEL syntax. Thes
 capabilities:
   github_file:
     before:
-      - invoke: "audit-log:record_event"
+      - invoke: "audit_log.record_event"
         bindings:
           event_type: "'file_access'"
           resource_path: "input.path"

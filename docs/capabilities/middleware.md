@@ -19,7 +19,7 @@ A `MiddlewareStep` defines a single action within either layer. Steps are placed
 MiddlewareStep:
   # Exactly one of assert, invoke, or transform MUST be set.
   assert: str | None       # CEL expression that must be truthy
-  invoke: str | None       # "tool-name:capability_name"
+  invoke: str | None       # a capability of this agent, by name
   transform: str | None    # CEL expression whose result replaces the output
 
   # Filters
@@ -52,10 +52,12 @@ Evaluates a CEL expression. If truthy — the step passes. If falsy — the step
 
 ### Invoke
 
-Calls another tool capability directly. The invoked capability executes via its tool runtime; no middleware is evaluated on the invoked capability itself. The result is recorded on the task context at `capabilities.<compiled_function_name>`.
+Calls a capability directly. The invoked capability executes via its tool runtime; no middleware is evaluated on the invoked capability itself. The result is recorded on the task context under the capability's own name, nested — `capabilities.audit_log.record_event` for the step below.
+
+`invoke` names a capability exactly as [task context](task-context.md#capability-keys) does — `{tool}.{action}`, `{workspace}.{tool}.{action}`, `{agent}`, `agent://{workspace}.{agent}`. An omitted workspace means the agent's own, whichever way the capability key itself was spelled: a key is a reference and takes a dash, a name is a CEL path and does not. The step may name a capability that is not otherwise given to the agent.
 
 ```yaml
-- invoke: "audit-log:record_event"
+- invoke: "audit_log.record_event"
   bindings:
     event_type: "'capability_executed'"
     user_id: "context.user.id"
@@ -75,7 +77,7 @@ Evaluates a CEL expression whose return value **replaces** what the LLM sees. Th
 
 ## Filters
 
-- **`match`** — If set, the step only fires for the specific sub-capability matching this name. Applies within multi-capability tool contexts.
+- **`match`** — If set, the step only fires for the action matching this name. Applies to a tool declaring several actions.
 - **`condition`** — If set, the step is skipped entirely when this CEL expression evaluates to falsy. No events are emitted for skipped steps.
 
 ## Failure Policy (`on_fail`)

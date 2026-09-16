@@ -30,7 +30,7 @@ When `phase` is `terminal`, `status.terminal_reason` explains why. It is one of:
 | `terminal_reason` | Meaning |
 |---|---|
 | `completed` | The task was finished by an explicit, positive action — never as a side effect of ordinary processing. A task that has simply delivered its output goes `idle`, not `terminal`. |
-| `errored` | The task halted on an unrecoverable error — an unreachable endpoint, an invalid configuration, or an exceeded resource limit (`max_turns`, `max_prompt_tokens`, `max_completion_tokens`, `max_age`, `max_tool_calls`). A runtime records error detail internally; how much of it is exposed, and to whom, is implementation-defined. |
+| `errored` | The task halted on an unrecoverable error — an unreachable endpoint, an invalid configuration, or an exceeded resource limit (`max_llm_turns`, `max_prompt_tokens`, `max_completion_tokens`, `max_age`, `max_capability_uses`). A runtime records error detail internally; how much of it is exposed, and to whom, is implementation-defined. |
 | `restricted` | The task was permanently locked by a guardrail or middleware `lock_task` outcome. |
 
 `terminal_reason` MUST be `null` for any non-terminal task.
@@ -98,13 +98,37 @@ context.input[0].project_name
 
 ## Capability Keys
 
-Capabilities are keyed by their **function name** — the exact identifier the LLM uses when invoking the capability. Derived as follows:
+Capabilities are keyed by their **name** — what an agent's author writes to reach one, here and in a middleware `invoke`. A name is the resource, an optional qualifer, and (for a tool) the action, joined with dots:
 
-- **Single-capability tool** — the agent capability reference (e.g. agent ref `slack_post` → key `slack_post`)
-- **Multi-capability tool** — the reference plus the capability name (e.g. ref `github_file`, capability `read_chunk` → key `github_file_read_chunk`)
-- **Sub-agent delegation** — the agent name (e.g. agent `research_agent` → key `research_agent`)
+| | name | depth |
+|---|---|---|
+| Tool, no qualifer | `github_file.read_chunk` | 2 |
+| Tool, with qualifer | `qualifer.github_file.read_chunk` | 3 |
+| Delegation, no qualifer | `research_agent` | 1 |
+| Delegation, with qualifer | `agent://qualifer.research_agent` | 2 + scheme |
 
-A name is already a valid CEL identifier, so nothing is substituted. A name identifies one resource, so no two capability keys collide.
+**Depth says which kind is named.** A tool always carries its action and an agent never has one, so in the common case nothing else has to be written to tell them apart. An agent may therefore reference a tool and an agent of one name: `fetcher.read` and `fetcher` are different names.
+
+Two segments is the one depth both kinds could claim, and the tool takes priority. That is why a delegation of with an additional qualifier carries the scheme: `scope.research_agent` already means the tool `scope` and its action `research_agent`.
+
+### The `agent://` scheme
+
+`agent://` may always be written on a delegation. It is required in two places, and both are the same question — whether the bare form would name something else:
+
+- **A delegation with a qualifier**, always, because otherwise this would be an unqualifed tool.
+- **A delegation whose path a tool has claimed** — a tool `fetcher` keeps its actions under `fetcher`, so the delegation of that name is `agent://fetcher`.
+
+Writing the scheme when it is not needed gives you a name that cannot move later.
+
+### Reading a record
+
+This object is **nested on the name**: `context.capabilities.github_file.read_chunk.outputs`, `context.capabilities.research_agent.task_ids`. The nesting is the name, so an author who can write a capability can read its record.
+
+`agent://` cannot appear in a CEL path, so a delegation whose name carries it is read by its whole name as a key: `context.capabilities["agent://fetcher"]`.
+
+**Every delegation reads under that key**, including one whose name does not require the scheme: `context.capabilities["agent://research_agent"]` and `context.capabilities.research_agent` are the same record. That is what makes the long form the spelling you can rely on — it goes on reading if a tool later claims the short path.
+
+What the LLM writes to CALL a capability is derived from this name and may be shorter — see [CEL reference](../reference/cel.md). An author is never shown that spelling.
 
 ## Accessing Context in CEL
 
@@ -132,10 +156,10 @@ context.input[0].repo_name
 context.output[0].message[0].text
 
 # Whether a capability succeeded at least once
-context.capabilities.github_file_read_chunk.count_successful > 0
+context.capabilities.github_file.read_chunk.count_successful > 0
 
 # Output from the most recent invocation of a capability
-context.capabilities.zendesk_fetch_ticket.outputs[0]
+context.capabilities.zendesk.fetch_ticket.outputs[0]
 
 # Total token usage
 context.llm.tokens.total

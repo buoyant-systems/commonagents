@@ -30,7 +30,7 @@ When `phase` is `terminal`, `status.terminal_reason` explains why. It is one of:
 | `terminal_reason` | Meaning |
 |---|---|
 | `completed` | The task was finished by an explicit, positive action — never as a side effect of ordinary processing. A task that has simply delivered its output goes `idle`, not `terminal`. |
-| `errored` | The task halted on an unrecoverable error — an unreachable endpoint, an invalid configuration, or an exceeded resource limit (`max_turns`, `max_prompt_tokens`, `max_completion_tokens`, `max_age`, `max_tool_calls`). A runtime records error detail internally; how much of it is exposed, and to whom, is implementation-defined. |
+| `errored` | The task halted on an unrecoverable error — an unreachable endpoint, an invalid configuration, or an exceeded resource limit (`max_llm_turns`, `max_prompt_tokens`, `max_completion_tokens`, `max_age`, `max_capability_uses`). A runtime records error detail internally; how much of it is exposed, and to whom, is implementation-defined. |
 | `restricted` | The task was permanently locked by a guardrail or middleware `lock_task` outcome. |
 
 `terminal_reason` MUST be `null` for any non-terminal task.
