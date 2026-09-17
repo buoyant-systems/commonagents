@@ -63,15 +63,37 @@ Each action's `execute` block:
 execute:
   stateless_http:
     method: GET | POST | PUT | PATCH | DELETE
-    url: str               # supports {parameter} interpolation; MAY be a relative path (see base_url)
+    url: str               # scheme, host and path. MUST NOT contain a query.
+                           # supports {parameter} interpolation; MAY be a relative path (see base_url)
+    query: dict[str, str] | None  # query parameters; see "The query is a map" below
     headers: dict[str, str] | None
     json: object | None    # structured request body, serialised to JSON by the runtime
                            # (sets Content-Type: application/json). Interpolated values are escaped.
     body: str | None       # raw string request body, interpolated as-is. Mutually exclusive with json.
-    response_path: str | None  # JSONPath to extract from response
+    output: object | None  # JMESPath extraction maps routing the response to the model and task context
 ```
 
 Use `json` for structured request bodies — the runtime serialises the object and escapes interpolated `{parameter}` values, so a value containing quotes or newlines is safe. Use `body` only when a pre-formatted raw string is required. `json` and `body` MUST NOT both be set on the same action.
+
+#### The query is a map
+
+Query parameters are declared in `query`, never written into `url`; a `url` containing a `?` MUST be refused at the write. Keys may carry `{expression}` tokens, which is what reaches APIs filtering as `filter[field][operator]=value`.
+
+```yaml
+url: /api/v2/search.json
+query:
+  tag: "{parameters.tags}"                          # a list repeats the key: tag=a&tag=b
+  "filter[{parameters.field}][{parameters.op}]": "{parameters.value}"
+```
+
+Rules an implementation MUST follow:
+
+- **Values are percent-encoded in full** (space as `%20`, not `+`). A single `{expression}` keeps its type; a list becomes a repeated key.
+- **In a key, the author's own bytes are sent as written and a token's bytes are percent-encoded** — so `filter[` and `]` reach the service intact and a supplied value can never leave the key it was written into. A key expression MUST produce a scalar or null, and MAY be the whole key.
+- **An author's literal key text MUST NOT contain `&`, `=`, `?`, `#` or a space**, and a tool writing one is refused.
+- **Null omits.** A null value, or a null anywhere in a key, sends nothing — never `filter[null][eq]`. An empty-string value still sends `key=`; an empty list sends nothing.
+- **Two entries resolving to one key are an error** returned to the model, with no precedence either way. This is also what stops a model-supplied key shadowing one carrying a bound value.
+- Parameters are rendered in key order, so one definition produces one request.
 
 **Shared configuration.** A tool MAY declare a top-level `stateless_http` block (a sibling of `actions`) whose values apply to every action:
 
@@ -209,7 +231,7 @@ Each receive sub-type accepts an optional `filter` field: a CEL expression that 
 
 - All root and per-action parameter values resolved from LLM action calls are added to the allow list.
 - Per-event parameters are also part of the same namespace — if they share a name with a per-action parameter, they share the allow list entry.
-- A parameter with an agent-defined binding has its allow list entry **sealed** at task start — fixed to the binding value, it cannot grow from action calls. `require_binding: true` is a validation constraint that ensures a binding is present; it does not itself seal the entry.
+- A parameter with an agent-defined binding has its allow list entry **sealed** at task start — fixed to the binding value, it cannot grow from action calls. `require_binding` is a validation constraint that ensures a binding is present for the parameters it names; it does not itself seal the entry.
 - If a referenced parameter's allow list is empty, the filter fails and the event is **discarded**.
 
 ### `webhook`

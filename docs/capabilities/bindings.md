@@ -37,25 +37,27 @@ A binding carries the **type** its expression produced. A value that is exactly 
 
 Bindings are evaluated **synchronously before** the capability is delegated to the LLM. The evaluated values are merged with any LLM-provided parameters, with bindings taking precedence.
 
-When a parameter has `require_binding: true` in the tool schema, the binding is the only permitted value source. When a parameter has a binding, any attempt by the LLM to override it is ignored.
+When `require_binding` names a parameter in the tool schema, the binding is the only permitted value source. When a parameter has a binding, any attempt by the LLM to override it is ignored.
 
-## `require_binding: true`
+## `require_binding`
 
-Tools can declare that a parameter must always come from an agent binding:
+Tools can declare that a parameter must always come from an agent binding. `require_binding` is a list of names on the parameters object, beside `required`:
 
 ```yaml
 # In the tool manifest
 parameters:
+  type: object
   properties:
     user_id:
       type: string
       description: "The authenticated user's ID."
-      require_binding: true   # Agent MUST provide a binding; invalid config otherwise
+  required: ["user_id"]
+  require_binding: ["user_id"]   # Agent MUST bind it; invalid config otherwise
 ```
 
-`require_binding: true` is a **tool-side validation constraint**. It is enforced at agent save time — any agent that references this tool without providing a binding for the parameter is rejected by the API server.
+`require_binding` is a **tool-side validation constraint**. It is enforced at agent save time — any agent that references this tool without providing a binding for a named parameter is rejected by the API server.
 
-Note: it is the **binding** (not this flag) that hides the parameter from the LLM and seals its action allow list entry. A binding can exist without `require_binding: true` — the parameter will still be hidden and sealed. `require_binding: true` without a binding is an invalid configuration that the runtime MUST error on.
+Note: it is the **binding** (not this list) that hides the parameter from the LLM and seals its action allow list entry. A binding can exist for a parameter `require_binding` does not name — it will still be hidden and sealed. A named parameter with no binding is an invalid configuration that the runtime MUST error on.
 
 ## How Bindings Scope Events
 
@@ -66,9 +68,12 @@ Agent bindings contribute to the allow list directly. A binding on `owner` adds 
 ```yaml
 # Tool manifest (excerpt)
 parameters:
+  type: object
   properties:
-    owner: { type: string, require_binding: true }
-    repo:  { type: string, require_binding: true }
+    owner: { type: string }
+    repo:  { type: string }
+  required: ["owner", "repo"]
+  require_binding: ["owner", "repo"]
 
 events:
   - name: comment
@@ -88,16 +93,19 @@ capabilities:
 
 The binding is what seals the allow list — the set is fixed and cannot grow from LLM action calls. Events are scoped to exactly the bound value from task start.
 
-A binding can exist without `require_binding: true` and the parameter will still be hidden from the LLM and its allow list entry will still be sealed. `require_binding: true` only enforces at validation time that the binding is not accidentally omitted.
+A binding can exist for a parameter `require_binding` does not name, and the parameter will still be hidden from the LLM and its allow list entry will still be sealed. `require_binding` only enforces at validation time that the binding is not accidentally omitted.
 
-Parameters with `require_binding: true` are particularly well-suited for event filters: they guarantee that the agent configuration is always valid (binding present), and the binding itself ensures the value is reliably agent-controlled and the event scope cannot drift as the task progresses.
+Parameters named in `require_binding` are particularly well-suited for event filters: they guarantee that the agent configuration is always valid (binding present), and the binding itself ensures the value is reliably agent-controlled and the event scope cannot drift as the task progresses.
 
 ```yaml
 # Tool manifest (excerpt)
 parameters:
+  type: object
   properties:
-    owner: { type: string, require_binding: true }
-    repo:  { type: string, require_binding: true }
+    owner: { type: string }
+    repo:  { type: string }
+  required: ["owner", "repo"]
+  require_binding: ["owner", "repo"]
 
 events:
   - name: comment

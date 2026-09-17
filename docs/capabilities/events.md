@@ -81,7 +81,7 @@ capabilities:
       repo:  "agent-mesh"        # binding → sealed to this value
 ```
 
-`require_binding: true` on a parameter is a **tool-side validation constraint** that ensures the agent MUST configure a binding. It does not itself seal the allow list or hide the parameter — that is what the binding does. If a parameter has `require_binding: true` but no binding, the configuration is invalid.
+`require_binding` is a **tool-side validation constraint** that ensures the agent MUST configure a binding for each parameter it names. It does not itself seal the allow list or hide the parameter — that is what the binding does. If `require_binding` names a parameter that has no binding, the configuration is invalid.
 
 ## Using `include` to Filter Events
 

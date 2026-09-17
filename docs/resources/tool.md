@@ -69,9 +69,9 @@ mcp: object | None
 
 5. **`parameters`** — When present, defines parameters shared across all actions **and** all events. All root parameters are available as `parameters.*` inside event `receive.filter` CEL expressions — the tool author may reference any of them when writing routing conditions.
 
-   - A property **without** a `default` is required — the caller must supply a value.
-   - A property **with** a `default` is optional — the default is used when the value is absent.
-   - `require_binding: true` — a **validation constraint**: any agent using this tool must supply a binding for this parameter. Without a binding the configuration is invalid. It is the **binding** (not this flag) that hides the parameter from the LLM and seals its allow list entry. Parameters used in event `receive.filter` expressions are good candidates for `require_binding: true`, because it ensures the binding (and therefore the routing value) is always present.
+   - `required` — a list of names on the parameters object that must have a value. A name it does not carry may be omitted, and interpolates as null.
+   - A property **with** a `default` has it supplied whenever nothing else does, whether or not it is required. `default` sits on the property because it describes the value; `required` sits on the object because it describes membership.
+   - `require_binding` — a list of names, a **validation constraint**: any agent using this tool must supply a binding for each. Without a binding the configuration is invalid. It is the **binding** (not this list) that hides the parameter from the LLM and seals its allow list entry. Parameters used in event `receive.filter` expressions are good candidates for `require_binding`, because it ensures the binding (and therefore the routing value) is always present.
 
    See [Parameter Pipeline](../reference/parameters.md) for how values flow from bindings and LLM generation through to interpolation, and how a tool reaches configuration and credentials through [connections](../reference/parameters.md#connections).
 
@@ -170,15 +170,14 @@ name: "github_file"
 description: "Reads and writes files in a GitHub repository."
 
 parameters:
+  type: object
   properties:
     owner:
       type: string
       description: "The repository owner."
-      require_binding: true
     repo:
       type: string
       description: "The repository name."
-      require_binding: true
     path:
       type: string
       description: "The file path within the repository."
@@ -186,6 +185,8 @@ parameters:
       type: string
       description: "The branch to read from or write to."
       default: "main"
+  required: ["owner", "repo", "path"]
+  require_binding: ["owner", "repo"]
 
 stateless_http:
   base_url: "{connection('github').base_url}"
@@ -219,7 +220,7 @@ actions:
           branch: "{parameters.branch}"
 ```
 
-The manifest holds no token and no host. `owner` and `repo` are supplied by the agent that uses the tool (`require_binding: true` makes those bindings mandatory), and the credential and base URL are read off the `github` connection at execution time.
+The manifest holds no token and no host. `owner` and `repo` are supplied by the agent that uses the tool (naming them in `require_binding` makes those bindings mandatory), and the credential and base URL are read off the `github` connection at execution time.
 
 ### Tool with Actions and Events
 
@@ -229,13 +230,14 @@ name: "github_pr"
 description: "Creates and manages GitHub Pull Requests."
 
 parameters:
+  type: object
   properties:
     owner:
       type: string
-      require_binding: true
     repo:
       type: string
-      require_binding: true
+  required: ["owner", "repo"]
+  require_binding: ["owner", "repo"]
 
 actions:
   - name: create_pr

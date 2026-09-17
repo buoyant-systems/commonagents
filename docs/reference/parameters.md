@@ -7,7 +7,7 @@ description: How values reach a tool capability — parameters from bindings and
 
 # Parameter Pipeline
 
-The parameter pipeline describes how values reach a tool capability at execution time, and how those values control event routing. Understanding this pipeline is essential for writing secure tools that prevent prompt injection and enforce data integrity.
+How values reach a tool capability at execution time, and how those values control event routing.
 
 Two independent surfaces supply a capability:
 
@@ -16,7 +16,7 @@ Two independent surfaces supply a capability:
 | **Parameters** | Yes — `parameters` schemas on the tool, its actions and its events | LLM generation, or an agent binding evaluated against task context | Yes, unless bound |
 | **Connections** | No — a provider is *named* at the point of use, never declared | The runtime, which resolves the named provider into configuration and credentials | Never |
 
-The separation is the point: a tool manifest is portable because it carries no secrets and no deployment-specific configuration. It names a provider and reads what it needs off whatever the runtime resolves that name to.
+A tool manifest is portable because it carries no secrets and no deployment-specific configuration: it names a provider and reads what it needs off whatever the runtime resolves that name to.
 
 ## Parameter Hierarchy
 
@@ -32,51 +32,56 @@ All three levels share a single **allow list namespace** keyed by parameter name
 
 ## ParameterSchema
 
-All three levels use the same `ParameterSchema` format:
+All three levels use the same schema format:
 
 ```yaml
+type: object
 properties:
   <name>:
-    type: string | number | boolean | object | array
+    type: string | number | boolean | object | array | file
     description: str
-    default: any | None        # presence determines required/optional
-    require_binding: bool      # default: false
-    format: str | None         # e.g. "uri", "date-time"
+    default: any | None        # used when nothing else supplies a value
     enum: list[any] | None
-    # ... standard JSON Schema properties
+    items: <schema> | None     # required on type: array
+required: list[str] | None          # names that MUST have a value
+require_binding: list[str] | None   # names the referencing agent MUST bind
 ```
+
+**A property says what a value is; the object says which members must be there.** `type`, `description`, `default`, `enum` and `items` sit on the property, where JSON Schema puts them. `required` and `require_binding` constrain membership, so they sit on the object.
+
+Every name in either list MUST be declared in `properties`; a schema naming one that is not MUST be refused.
+
+## Where a value comes from
+
+**The agent decides, by binding or not binding.** A parameter the agent binds is resolved from task context and removed from the schema the LLM is shown, so the LLM never writes one and cannot override it. Everything else the tool declares is the LLM's to write.
+
+For a parameter the agent did NOT bind, the LLM may write a value or leave it out. If it leaves it out:
+
+1. the property's **`default`**, if it declares one — whether or not the parameter is required;
+2. otherwise an **error** naming the parameter, if `required` names it;
+3. otherwise **null**.
+
+So `required` is not about the LLM. It says the capability cannot run without a value, whichever of the three sources provides it — a binding and a default each satisfy it on their own, and a parameter that is both bound and required can never fail.
+
+Middleware `invoke` steps carry their own bindings, which override the capability's for that step.
 
 ### Required vs Optional
 
-- A property **without** a `default` field is **required** — it must be provided by the LLM or a binding before execution.
-- A property **with** a `default` field is **optional** — the runtime backfills the default if the value is absent.
+`required` and `default` are separate statements: a default says what to use when nothing supplies a value, `required` says whether anything must. Keeping them apart is what lets a capability declare more inputs than any one call needs — three filter slots of which a question uses one, a cursor only a follow-up call has — and it gives an MCP server's own `required` array somewhere to land unchanged.
 
-### `require_binding: true`
+**Declared and null is not the same as undeclared.** Every declared property exists at interpolation time, holding null where nothing supplied it; a reference to an undeclared one is an error and MUST remain one, because it is what catches a misspelled `{parameters.tickt_id}`. What a null then means is each field's own answer — a `stateless_http` query parameter is omitted entirely, while a composed value renders it. See [Tool Runtimes](../resources/tool-runtimes.md#stateless_http).
 
-`require_binding: true` is a **tool-side validation constraint**. When set:
-- The API server rejects any agent that references this tool without providing a binding for the parameter.
-- If no binding is configured, the configuration is invalid and the runtime MUST error.
+### `require_binding`
 
-Note: it is the **binding** (not this flag) that:
-- Hides the parameter from the LLM-facing schema.
-- Seals the action allow list entry so it cannot be expanded by LLM action calls.
+`require_binding` lists the parameters a referencing agent MUST bind. It is a **tool-side validation constraint**, not a value source: the API server rejects any agent that references this tool without a binding for a named parameter, and a configuration reaching the runtime without one is invalid.
 
-A binding can exist without `require_binding: true` — the parameter is still hidden and the allow list entry is still sealed. `require_binding: true` only adds the validation guarantee that the binding is not accidentally omitted.
+It is the **binding** — not this list — that hides a parameter from the LLM and seals its action allow list entry. A binding can exist for a parameter `require_binding` does not name, and is hidden and sealed just the same. What the list adds is the guarantee that the binding was not accidentally omitted, which is what makes such parameters well-suited to event filters: the value is reliably agent-controlled and its allow list entry is sealed from task start.
 
-Parameters with `require_binding: true` are well-suited for use in event filters: the constraint guarantees a binding is always present, and the binding ensures the value is reliably agent-controlled and the allow list entry is sealed from task start.
+A name may appear in both lists or either alone: `required` is about the call having a value, `require_binding` about where that value may come from.
 
-## Parameter Sources
+## Connections are not a parameter source
 
-A capability parameter can originate from four sources, in priority order (highest wins):
-
-```
-1. Agent Bindings      ← highest priority, always wins; hides parameter from LLM
-2. Middleware Bindings ← overrides capability-level bindings in invoke steps
-3. LLM Generation      ← blocked for parameters that have an agent binding
-4. Default Value       ← from the parameter schema's default field
-```
-
-Connections are not on this list, because a connection is not a parameter source: it is a separate surface a template reads at the point of use, so its value never becomes an argument. Both surfaces are available to a tool, and although nothing stops a secret being declared as a parameter and supplied by a binding, a connection is the preferred mechanism as it supports dynamically signing tokens and keeps authentication out of the domain layer. See [Connections](#connections).
+A connection is a separate surface a template reads at the point of use, so its value never becomes an argument. Both surfaces are available to a tool, and although nothing stops a secret being declared as a parameter and supplied by a binding, a connection is preferred: it supports dynamically signing tokens and keeps authentication out of the domain layer. See [Connections](#connections).
 
 ## Action Allow List
 
@@ -93,7 +98,7 @@ The allow list is maintained **per-tool, per-task**, keyed by **parameter name**
 
 **Sealing the allow list:**
 - A parameter with an agent-defined binding has its allow list entry **sealed** at task start. The runtime MUST NOT append to it from action calls.
-- `require_binding: true` is a validation constraint that ensures a binding is present — it is not itself what seals the entry.
+- `require_binding` is a validation constraint that ensures a binding is present — it is not itself what seals the entry.
 
 **Per-action / per-event sync:**
 - If a per-action parameter and a per-event parameter share the same name, they are the same allow list entry. This is how tool authors link specific action inputs to specific event filters — through naming.
@@ -166,11 +171,13 @@ Who the agent acts as is not in this table, because nothing supplies it. The row
 ```yaml
 # Tool manifest
 parameters:
+  type: object
   properties:
     # Root: applies to all actions + all events
     repo_id:
       type: string
-      require_binding: true    # validation constraint: binding MUST be provided
+  required: ["repo_id"]
+  require_binding: ["repo_id"]    # validation constraint: binding MUST be provided
 
 stateless_http:
   base_url: "https://api.github.com"
