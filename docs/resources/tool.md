@@ -112,7 +112,7 @@ The following interpolation roots are available in **all** execution spec string
 | `{connection('<provider>').<key>}` | A non-secret field of a named provider connection — base URL, project, region, tenant |
 | `{connection('<provider>').user_auth(scopes?).<key>}` | A credential for the user responsible for the task; `.token` is the bearer token. The runtime injects the user's identity |
 | `{connection('<provider>').service_auth(selector?).<key>}` | A credential for the deployment's own machine identity; `.token` is the bearer token. The optional selector names one target resource |
-| `{session.<key>}` | Session state extracted by `stateful_session` (deferred until session is created) |
+| `{session.<key>}` | Session state extracted by a `stateful_session` `start` hook (deferred until it has run) |
 | `{runtime.version}` | Runtime version string |
 | `{runtime.dashboard_url}` | Runtime dashboard URL |
 | `{runtime.api_root}` | Runtime API root URL |
@@ -146,7 +146,7 @@ execute:
 
 #### `stateful_session`
 
-The `create`, `initialize`, and `teardown` HTTP call fields all support `{expression}` interpolation. The `execute` sub-block also supports full interpolation. `{session.<key>}` references are deferred until after the session is created.
+Every request in the `start` and `end` hooks supports `{expression}` interpolation, as does each action's `execute.stateful_session` block. `{session.<key>}` references are deferred until `start` has extracted them, and a request may not reference a key its own `extract` produces. See [Tool Runtimes](./tool-runtimes.md#stateful_session).
 
 #### `kubernetes_job`
 

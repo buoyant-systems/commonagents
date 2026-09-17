@@ -10,7 +10,7 @@ description: The available execution backends for tool actions and event receive
 A tool declares its execution behaviour through two kinds of runtimes:
 
 - **Action runtimes** — declared in an action's `execute` block. Determines how an outbound action invocation is executed (HTTP, CEL, MCP, etc.).
-- **Receive runtimes** — declared in an event's `receive` block. Determines how inbound events are delivered to the runtime.
+- **Receive runtimes** — declared in an event's `receive` block. Determines how an inbound event reaches the task.
 
 Both follow the same pattern: the runtime type is identified by which sub-key is present in the block.
 
@@ -20,17 +20,36 @@ Both follow the same pattern: the runtime type is identified by which sub-key is
 
 Every tool action must declare exactly one runtime backend in its `execute` block.
 
-### Runtime Interface
+### Errors
 
-All runtimes MUST implement a three-phase lifecycle:
+Every runtime MUST distinguish two kinds of failure:
 
-1. **Initialize** — Called once per tool per task on first action invocation. Returns an initialized state with interpolated configuration and any session data.
-2. **Invoke** — Called for each individual action execution. Returns the action result. Recoverable errors (e.g. HTTP 5xx, tool-level failures) are reported back to the LLM so it can retry or adapt. Only unrecoverable errors (unreachable endpoints, invalid configuration) terminate the task.
-3. **Teardown** — Called when the task completes or the state is evicted. Performs cleanup (e.g. closing sessions). Stateless runtimes implement this as a no-op.
+- **Unrecoverable** — invalid configuration, unreachable endpoints. These terminate the task.
+- **Recoverable** — HTTP failures, tool-level errors. These are reported back to the LLM so it can retry or adapt.
 
-The runtime MUST distinguish:
-- **Unrecoverable errors** — invalid configuration, unreachable endpoints. These terminate the task.
-- **Recoverable errors** — HTTP failures, tool-level errors. These are reported back to the LLM for potential recovery.
+Most runtimes hold nothing between invocations, so each action execution stands alone. `stateful_session` is the exception: it holds a live connection, and declares how long for.
+
+### The query is a map
+
+Every URL any runtime in this document issues follows one rule. Query parameters are declared in a `query` map, never written into `url`; a `url` containing a `?` MUST be refused at the write. Keys may carry `{expression}` tokens, which is what reaches APIs filtering as `filter[field][operator]=value`.
+
+```yaml
+url: /api/v2/search.json
+query:
+  tag: "{parameters.tags}"                          # a list repeats the key: tag=a&tag=b
+  "filter[{parameters.field}][{parameters.op}]": "{parameters.value}"
+```
+
+Rules an implementation MUST follow:
+
+- **Values are percent-encoded in full** (space as `%20`, not `+`). A single `{expression}` keeps its type; a list becomes a repeated key.
+- **In a key, the author's own bytes are sent as written and a token's bytes are percent-encoded** — so `filter[` and `]` reach the service intact and a supplied value can never leave the key it was written into. A key expression MUST produce a scalar or null, and MAY be the whole key.
+- **An author's literal key text MUST NOT contain `&`, `=`, `?`, `#` or a space**, and a tool writing one is refused.
+- **Null omits.** A null value, or a null anywhere in a key, sends nothing — never `filter[null][eq]`. An empty-string value still sends `key=`; an empty list sends nothing.
+- **Two entries resolving to one key are an error** returned to the model, with no precedence either way.
+- Parameters are rendered in key order, so one definition produces one request.
+
+A websocket or gRPC URL declares its query the same way. The scheme decides the transport, not what a value may contain.
 
 ### `cel`
 
@@ -65,7 +84,7 @@ execute:
     method: GET | POST | PUT | PATCH | DELETE
     url: str               # scheme, host and path. MUST NOT contain a query.
                            # supports {parameter} interpolation; MAY be a relative path (see base_url)
-    query: dict[str, str] | None  # query parameters; see "The query is a map" below
+    query: dict[str, str] | None  # query parameters; see "The query is a map" above
     headers: dict[str, str] | None
     json: object | None    # structured request body, serialised to JSON by the runtime
                            # (sets Content-Type: application/json). Interpolated values are escaped.
@@ -74,26 +93,6 @@ execute:
 ```
 
 Use `json` for structured request bodies — the runtime serialises the object and escapes interpolated `{parameter}` values, so a value containing quotes or newlines is safe. Use `body` only when a pre-formatted raw string is required. `json` and `body` MUST NOT both be set on the same action.
-
-#### The query is a map
-
-Query parameters are declared in `query`, never written into `url`; a `url` containing a `?` MUST be refused at the write. Keys may carry `{expression}` tokens, which is what reaches APIs filtering as `filter[field][operator]=value`.
-
-```yaml
-url: /api/v2/search.json
-query:
-  tag: "{parameters.tags}"                          # a list repeats the key: tag=a&tag=b
-  "filter[{parameters.field}][{parameters.op}]": "{parameters.value}"
-```
-
-Rules an implementation MUST follow:
-
-- **Values are percent-encoded in full** (space as `%20`, not `+`). A single `{expression}` keeps its type; a list becomes a repeated key.
-- **In a key, the author's own bytes are sent as written and a token's bytes are percent-encoded** — so `filter[` and `]` reach the service intact and a supplied value can never leave the key it was written into. A key expression MUST produce a scalar or null, and MAY be the whole key.
-- **An author's literal key text MUST NOT contain `&`, `=`, `?`, `#` or a space**, and a tool writing one is refused.
-- **Null omits.** A null value, or a null anywhere in a key, sends nothing — never `filter[null][eq]`. An empty-string value still sends `key=`; an empty list sends nothing.
-- **Two entries resolving to one key are an error** returned to the model, with no precedence either way. This is also what stops a model-supplied key shadowing one carrying a bound value.
-- Parameters are rendered in key order, so one definition produces one request.
 
 **Shared configuration.** A tool MAY declare a top-level `stateless_http` block (a sibling of `actions`) whose values apply to every action:
 
@@ -124,7 +123,7 @@ stateless_http:
 
 #### Files and the mount
 
-Both HTTP runtimes move file content directly between the agent's [mount](mount.md) and a remote API — the bytes never pass through the model's context or the persisted task result, only a `file` reference does (see [Content](../capabilities/content.md)). An agent's `mount` MUST include `task` for either direction: a downloaded file is placed by the runtime rather than by the tool, so it resides in the task scope ([Mount](mount.md)).
+`stateless_http` moves file content directly between the agent's [mount](mount.md) and a remote API — the bytes never pass through the model's context or the persisted task result, only a `file` reference does (see [Content](../capabilities/content.md)). An agent's `mount` MUST include `task` for either direction: a downloaded file is placed by the runtime rather than by the tool, so it resides in the task scope ([Mount](mount.md)).
 
 **Download — write a response body to the mount.** Set `response: file` on an action's `execute.stateless_http` to declare that the response body is a file. Whether an endpoint returns a file is decided by the schema — response `Content-Type` is never sniffed.
 
@@ -162,28 +161,55 @@ Chunk PUTs use **only** `upload.headers` — they deliberately do not inherit to
 
 ### `stateful_session`
 
-Maintains a remote session across multiple action invocations within a task. The runtime establishes the session on first invocation (Initialize) and tears it down when the task ends.
+Maintains a **live connection** to a remote across multiple action invocations — a browser over CDP, a sandbox over gRPC, a shell over a websocket. That connection is the state this runtime holds, and the only reason to reach for it. Data that merely travels between calls is not state: parameters carry it, and `stateless_http` needs none of this.
 
-Session-scoped variables extracted from the session are available as `{session.<key>}` during interpolation.
+A `start` hook establishes the session, an `end` hook releases it, and a `connection` block declares the one connection they bracket — its URL, how long it is held, and what the protocol permits.
+
+A tool that also needs a durable resource behind its connection — a browser context whose cookies outlive any one connection — does not declare it here. It exposes minting one as an ordinary stateless action, and the agent invokes it and binds the result in, because whether that resource is per-task, per-user or shared is a decision about the agent rather than about the remote's API.
 
 ```yaml
+# Tool level. Each hook is a list, run in order.
 stateful_session:
-  create:                # HTTP call to establish the session
-    method: POST
-    url: str
-    body: object | None
-  extract:               # Fields to extract from the create response into session state
-    <session_key>: str   # JSONPath expression
-  execute:               # HTTP call for each action invocation
-    method: str
-    url: str             # may reference {session.<key>}
-    body: object | None
-  destroy:               # HTTP call to tear down the session
-    method: DELETE
-    url: str
+  base_url: str | None              # prefix for relative start/end urls
+  headers: dict[str, str] | None    # merged into every start/end request
+
+  start:                            # establishes the session
+    - method: str
+      url: str                      # MUST NOT contain a query
+      query: dict[str, str] | None
+      headers: dict[str, str] | None
+      json: object | None           # structured body; mutually exclusive with body
+      body: str | None              # raw string body
+      extract: dict[str, str] | None    # session key -> JMESPath over the response
+  end: [ ... ]                      # releases it; no extract
+
+  connection:                       # declared once, because there is one
+    url: str                        # ws:// wss:// grpc:// grpcs://; usually {session.<key>}
+    query: dict[str, str] | None
+    headers: dict[str, str] | None  # sent on the handshake
+    lifespan: active_processing | message_scope | task_scope    # default: active_processing
+    reconnect: auto | llm_driven                                # default: auto
 ```
 
-A stateful-session `execute` block supports the same file handling as `stateless_http`: `response: file` streams the response body into the agent's mount and returns a file handle, and an `upload` block streams a mount file to a remote API. See [Files and the mount](#files-and-the-mount).
+```yaml
+# Action level — what to send, never where.
+execute:
+  stateful_session:
+    json: object | None             # the frame to send; mutually exclusive with body
+    body: str | None
+    output: object | None           # JMESPath extraction maps; as stateless_http
+```
+
+An action declares what to send; the destination is `connection.url`, resolved once after `start` and shared by every action of the tool. One connection per session is therefore structural rather than a rule.
+
+Both hooks are optional, and each request MUST succeed before the next runs. `start` runs on the first invocation of any of the tool's actions within the span and again whenever the span has no session, so it MAY run several times and MUST tolerate that. `extract` is meaningful only on `start`; its values keep the type the remote answered with, are what the connection, the actions and `end` address the session by, MUST survive the task being resumed elsewhere, and MUST NOT be projected to the LLM.
+
+- **`lifespan`** — how long a session lasts: while the task is actively progressing (the default, released whenever it yields on anything — external auth, a review, a capacity backoff), to the end of the [message](../glossary.md), or to the end of the task. `active_processing` is the default because a yield has no bound the runtime controls, and a connection held across one is a metered seat held across it too.
+- **`reconnect`** — who re-establishes a session whose connection was lost. `auto` (default) means its state outlives the connection, so the runtime redials underneath and the LLM is not told. `llm_driven` means its state died with the connection, so the loss is reported and the LLM's next call runs `start` again. Under `llm_driven` the abandoned session's `end` runs; under `auto` there is nothing to close, because the session is still there. Either way a request already on the wire is never re-sent, and the failed call is reported to the LLM rather than retried.
+
+How the runtime dials, holds and redials is otherwise its own business. A connection it cannot recover leaves the span without a session, which the next invocation re-establishes by running `start` again.
+
+`end` runs on a session the runtime gives up on: a span that ended, a `llm_driven` connection that went, or one a dead process left behind, which a task reconciles from persisted session state when it resumes. A connection lost under `auto` is not giving up — the session survives it — but that session is still closed by its span's end if nothing dials again first. What none of this covers is a task nothing ever resumes, for which the backstop is the remote's own expiry.
 
 ### `openapi`
 
@@ -200,6 +226,16 @@ The runtime MUST derive parameters from the OpenAPI spec's operation definitions
 ### `mcp`
 
 Bridges to a [Model Context Protocol](https://modelcontextprotocol.io) server. The MCP server exposes its own set of tools; the runtime proxies action invocations to the MCP server.
+
+An action names the tool to proxy to:
+
+```yaml
+execute:
+  mcp:
+    tool_name: str
+```
+
+The server itself is declared once, in a top-level `mcp` block (a sibling of `actions`):
 
 ```yaml
 mcp:
@@ -236,7 +272,7 @@ Each receive sub-type accepts an optional `filter` field: a CEL expression that 
 
 ### `webhook`
 
-The external platform is configured to POST events to a fixed AgentMesh endpoint. The runtime listens passively — no registration or renewal is required.
+The external platform is configured to POST events to a fixed endpoint the runtime exposes. The runtime listens passively — no registration or renewal is required.
 
 ```yaml
 receive:
@@ -266,7 +302,7 @@ events:
 
 ### `subscription`
 
-The runtime actively registers a push channel with the external platform. Channels are typically time-limited and must be renewed. This is structurally parallel to `stateful_session` for actions: `subscribe` maps to `create`, and `unsubscribe` maps to `destroy`.
+The runtime actively registers a push channel with the external platform. Channels are typically time-limited and must be renewed. This is structurally parallel to `stateful_session` for actions — `subscribe` establishes and `unsubscribe` releases — but a subscription is always task-scoped.
 
 ```yaml
 receive:
@@ -274,14 +310,18 @@ receive:
     filter: str | None     # CEL routing discriminator (optional)
     subscribe:             # HTTP call to register the push channel
       method: str
-      url: str
-      headers: dict | None
-      body: object | None
+      url: str             # MUST NOT contain a query
+      query: dict[str, str] | None
+      headers: dict[str, str] | None
+      json: object | None  # mutually exclusive with body
+      body: str | None
     unsubscribe:           # HTTP call to deregister the push channel
       method: str
       url: str
-      headers: dict | None
-      body: object | None
+      query: dict[str, str] | None
+      headers: dict[str, str] | None
+      json: object | None
+      body: str | None
 ```
 
 The following interpolation roots are available in `subscribe` and `unsubscribe` fields:
@@ -290,7 +330,7 @@ The following interpolation roots are available in `subscribe` and `unsubscribe`
 |---|---|
 | `{parameters.*}` | Root tool parameters (populated from agent bindings) |
 | `{connection('<provider>').service_auth().token}` | A credential for the deployment's machine identity; `.user_auth()` for the acting user's. See [Connections](../reference/parameters.md#connections) |
-| `{runtime.api_root}` | The runtime's public-facing webhook base URL |
+| `{runtime.api_root}` | The runtime's public-facing API root, which inbound webhooks are addressed under |
 | `{subscription.id}` | Runtime-generated unique subscription identifier |
 | `{subscription.expires_at_ms}` | Subscription expiry as Unix milliseconds |
 | `{subscribe.*}` | Response fields from the `subscribe` call (available in `unsubscribe` only) |
@@ -337,8 +377,9 @@ receive:
   poll:
     filter: str | None     # CEL routing discriminator (optional)
     method: str
-    url: str               # supports {parameter} interpolation
-    headers: dict | None
+    url: str               # MUST NOT contain a query; supports {parameter} interpolation
+    query: dict[str, str] | None
+    headers: dict[str, str] | None
     detect: str            # CEL expression returning a list of new items from the response
 ```
 
