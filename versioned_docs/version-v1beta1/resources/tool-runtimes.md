@@ -172,7 +172,7 @@ An action declares what to send; the destination is `connection.url`, resolved o
 
 Both hooks are optional, and each request MUST succeed before the next runs. `start` runs on the first invocation of any of the tool's actions within the span and again whenever the span has no session, so it MAY run several times and MUST tolerate that. `extract` is meaningful only on `start`; its values keep the type the remote answered with, are what the connection, the actions and `end` address the session by, MUST survive the task being resumed elsewhere, and MUST NOT be projected to the LLM.
 
-- **`lifespan`** — how long a session lasts: while the task is actively progressing (the default, released whenever it yields on anything — external auth, a review, a capacity backoff), to the end of the [message](../glossary.md), or to the end of the task. `active_processing` is the default because a yield has no bound the runtime controls, and a connection held across one is a metered seat held across it too.
+- **`lifespan`** — how long a session lasts: while **this tool** is actively progressing (the default, released whenever its calls stop progressing — external auth, a review, a capacity backoff), to the end of the [message](../glossary.md), or to the end of the task. `active_processing` is per tool: another tool still working does not hold this one's session open. `active_processing` is the default because a yield has no bound the runtime controls.
 - **`reconnect`** — who re-establishes a session whose connection was lost. `auto` (default) means its state outlives the connection, so the runtime redials underneath and the LLM is not told. `llm_driven` means its state died with the connection, so the loss is reported and the LLM's next call runs `start` again. Under `llm_driven` the abandoned session's `end` runs; under `auto` there is nothing to close, because the session is still there. Either way a request already on the wire is never re-sent, and the failed call is reported to the LLM rather than retried.
 
 How the runtime dials, holds and redials is otherwise its own business. A connection it cannot recover leaves the span without a session, which the next invocation re-establishes by running `start` again.
@@ -214,7 +214,10 @@ mcp:
   args: list[str] | None
   url: str | None           # for sse transport
   env: dict[str, str] | None
+  lifespan: active_processing | message_scope | task_scope   # default: task_scope
 ```
+
+`lifespan` means what it means for `stateful_session`, and defaults differently: an MCP session is a handshake rather than a metered seat, so it is held for the task unless an author says otherwise.
 
 ### `kubernetes_job`
 

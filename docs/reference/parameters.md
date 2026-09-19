@@ -63,7 +63,7 @@ For a parameter the agent did NOT bind, the LLM may write a value or leave it ou
 
 So `required` is not about the LLM. It says the capability cannot run without a value, whichever of the three sources provides it — a binding and a default each satisfy it on their own, and a parameter that is both bound and required can never fail.
 
-Middleware `invoke` steps carry their own bindings, which override the capability's for that step.
+Bindings apply only to the LLM's calls: a capability called from middleware receives exactly the arguments the expression passes.
 
 ### Required vs Optional
 

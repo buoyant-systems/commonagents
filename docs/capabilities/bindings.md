@@ -149,22 +149,9 @@ bindings:
   max_results: "50"
 ```
 
-## Middleware Bindings
+## Bindings and Middleware
 
-Middleware `invoke` steps also support bindings, using the same CEL syntax. These are scoped to the middleware step and take precedence over capability-level bindings:
-
-```yaml
-capabilities:
-  github_file:
-    before:
-      - invoke: "audit_log.record_event"
-        bindings:
-          event_type: "'file_access'"
-          resource_path: "input.path"
-          user_id: "context.user.id"
-```
-
-See [Middleware](middleware.md) for full middleware documentation.
+Bindings apply only to the LLM's calls. A capability called from [middleware](middleware.md#calling-capabilities) receives exactly the arguments the expression passes.
 
 ## Example: Pinning a Sensitive Parameter
 
@@ -178,5 +165,5 @@ capabilities:
       customer_id: "context.capabilities.zendesk_fetch_ticket.outputs[0].customer_id"
     before:
       - assert: "context.capabilities.zendesk_fetch_ticket.count_successful > 0"
-        error_message: "Ticket must be fetched before issuing a refund."
+        deny_message: "Ticket must be fetched before issuing a refund."
 ```

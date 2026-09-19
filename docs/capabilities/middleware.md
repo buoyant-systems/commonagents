@@ -2,118 +2,115 @@
 id: middleware
 sidebar_position: 1
 title: Middleware
-description: Middleware steps — assert, invoke, transform — that gate capability execution.
+description: Middleware steps — assert and transform — that gate capability calls and an agent's input and output.
 ---
 
 # Middleware
 
-The specification provides two layers of policy enforcement, both invisible to the LLM — steps do not consume turns or appear in conversation history.
+The specification provides two layers of policy enforcement, both invisible to the LLM — steps consume no turns and appear in no conversation history, except through what they return.
 
-**Capability middleware** runs before and/or after individual capability invocations. It is declared on an agent's capability configuration and gates what the LLM can call and what it receives back. It can assert preconditions, invoke side-effect capabilities (such as an audit log), or transform the capability result before the LLM sees it.
+**Capability middleware** runs before and/or after the LLM's calls to a capability. It is declared on an agent's capability configuration.
 
-**Guardrails** are the same mechanism applied at the agent's input/output boundary rather than around individual capabilities. They gate what the agent receives as input and what it sends as output, across the entire conversation. Guardrails enforce organisation-level policies — content filters, input size limits, output redaction — independently of which tools the agent uses.
+**Guardrails** are the same mechanism at the agent's input/output boundary: they gate what the agent receives and what it sends, across the entire conversation.
 
-A `MiddlewareStep` defines a single action within either layer. Steps are placed in ordered `before`, `before_first`, and `after` lists and MUST be executed sequentially.
+Middleware runs only for the LLM's calls and the task's own input and output. A capability called from middleware runs no middleware of its own.
 
 ```yaml
 MiddlewareStep:
-  # Exactly one of assert, invoke, or transform MUST be set.
-  assert: str | None       # CEL expression that must be truthy
-  invoke: str | None       # a capability of this agent, by name
-  transform: str | None    # CEL expression whose result replaces the output
+  # Exactly one of assert or transform MUST be set.
+  assert: str | None         # CEL expression that must be truthy
+  transform: str | None      # CEL expression whose value replaces what flows through
 
   # Filters
-  match: str | None        # Only fire for this specific sub-capability name
-  condition: str | None    # CEL gate — skip step if falsy
+  match: str | None          # Only fire for this action name
+  condition: str | None      # CEL gate — skip step if falsy
 
-  # Failure output
-  error_message: str | None   # {expression} template returned to LLM on failure
-
-  # Failure policy
-  on_fail: "block" | "continue" | "lock_task" | None
-
-  # Invoke-only
-  bindings: dict[str, str] | None
+  deny_message: str | None   # assert only — {expression} template returned on denial
+  on_error: "fail_call" | "lock_task" | "ignore" | None
 ```
 
-## Actions
+Steps are placed in ordered `before`, `before_first`, and `after` lists and MUST be executed sequentially.
 
-A step has **exactly one** action. Validation MUST reject steps with more than one action set, or no action set.
+## Assert
 
-### Assert
+A truthy value passes; a falsy value **denies** (see [Denial](#denial)).
 
-Evaluates a CEL expression. If truthy — the step passes. If falsy — the step fails.
+## Transform
+
+The value replaces what flows through the pipeline, and subsequent steps run with it.
+
+| List | The value replaces | Seen as |
+|---|---|---|
+| Capability `before` / `before_first` | The arguments the LLM provided | `input` |
+| Guardrail `before` | The arriving input: its `message` and parameters | `input` |
+| Capability `after` | The capability's result | `output` |
+| Guardrail `after` | The model's response | `output` |
+
+A `before` transform MUST NOT set a parameter the agent binds. The transformed input is validated as the original would have been.
 
 ```yaml
-- assert: "output.status_code >= 200 && output.status_code < 300"
-  error_message: "API call failed with status {output.status_code}."
-  on_fail: block
+- transform: "input.put('email', '[redacted]')"                  # before
+- transform: "{'id': output.id, 'status': output.status}"        # after
 ```
 
-### Invoke
+## Calling Capabilities
 
-Calls a capability directly. The invoked capability executes via its tool runtime; no middleware is evaluated on the invoked capability itself. The result is recorded on the task context under the capability's own name, nested — `capabilities.audit_log.record_event` for the step below.
+`assert` and `transform` expressions MAY call the agent's capabilities by name — `crm.search({'query': 'acme'})`, or `analyst.send('…')` for a sub-agent. A call is a value, dispatched where the expression consumes it.
 
-`invoke` names a capability exactly as [task context](task-context.md#capability-keys) does — `{tool}.{action}`, `{workspace}.{tool}.{action}`, `{agent}`, `agent://{workspace}.{agent}`. An omitted workspace means the agent's own, whichever way the capability key itself was spelled: a key is a reference and takes a dash, a name is a CEL path and does not. The step may name a capability that is not otherwise given to the agent.
+1. Its value is the result, or `{error}` when the call failed. A failed call does not fail the step.
+2. It MAY reach a capability the agent's `include` list hides from the LLM.
+3. Its arguments are exactly those passed: [bindings](bindings.md) apply only to the LLM's calls.
+4. It is recorded on the task context as the LLM's calls are.
+5. A wait it meets holds the step. A call already completed MUST NOT be dispatched again.
+6. `condition` and `deny_message` MUST NOT call capabilities.
+
+## Answering Early
+
+`answer(value)` ends a `before` or `before_first` pipeline with `value` as the answer. It MUST be a transform's whole value, or a branch of a conditional in that position.
+
+The remaining `before` steps do not run, and neither does what the pipeline guards; the answer passes through the `after` list. For a capability, the capability is not called and the answer is the call's successful result. For a guardrail, no generation runs: the input commits and the answer is the turn's output.
 
 ```yaml
-- invoke: "audit_log.record_event"
-  bindings:
-    event_type: "'capability_executed'"
-    user_id: "context.user.id"
+- transform: "answer(crm.search({'query': 'acme'}))"
 ```
 
-### Transform
+## Denial
 
-Evaluates a CEL expression whose return value **replaces** what the LLM sees. The original tool result is always preserved on `context.capabilities`.
+A denial returns `deny_message` in place of what the pipeline guards, and nothing after it runs.
+
+| List | Effect |
+|---|---|
+| Capability `before` / `before_first` | The capability is not called; the LLM receives the message as the call's error. |
+| Capability `after` | The LLM receives the message as the call's error instead of the result. |
+| Guardrail `before` | The input is refused: recorded, never shown to the model. The turn's output is the message. Both carry [`error`](task-io.md): `denied_by_input_guardrail`. |
+| Guardrail `after` | The response is withheld, and the message replaces it. The turn's output is the message, with `error: denied_by_output_guardrail`. |
+
+For an event activation, a denial discards the event instead: nothing is committed.
+
+`deny_message` is an `{expression}` template. Absent, the implementation supplies the message.
 
 ```yaml
-# Redact secrets before the LLM sees the result
-- transform: "{'id': output.id, 'status': output.status, '_note': 'Credentials redacted.'}"
-
-# Add context for the LLM
-- transform: "output.put('_note', 'This config applies to new tasks only.')"
+- assert: "float(input.amount) <= 500.00 || review(context.user.id)"
+  deny_message: "Refund of {input.amount} was not approved."
 ```
 
-## Filters
+## Errors (`on_error`)
 
-- **`match`** — If set, the step only fires for the action matching this name. Applies to a tool declaring several actions.
-- **`condition`** — If set, the step is skipped entirely when this CEL expression evaluates to falsy. No events are emitted for skipped steps.
-
-## Failure Policy (`on_fail`)
-
-**For capability middleware** (`before` / `after` / `before_first`):
+A step **errors** when an expression cannot be evaluated. A failed capability call is not an error of the step.
 
 | Value | Effect |
 |---|---|
-| `"block"` (default) | Returns the error to the LLM as if the tool failed. Remaining steps are short-circuited. For `before` steps, the capability itself does NOT execute. |
-| `"continue"` | Skip the failing step and continue the pipeline. |
-| `"lock_task"` | Permanently halt the task. |
-
-**For guardrail middleware** (`guardrails.before` / `guardrails.after`):
-
-| Value | Effect |
-|---|---|
-| `"lock_task"` (default) | Permanently halt the task. |
-| `"continue"` | Skip the failing step and continue. |
-| `"block"` | **NOT valid** for guardrails. MUST be rejected. |
-
-## Error Message
-
-`error_message` is a template string using `{expression}` interpolation (same syntax as tool parameters — NOT raw CEL). Returned to the LLM when a step fails and `on_fail` is `block`.
-
-- In `after` steps, `{output}` references the current tool result.
-- In `before` steps, `{output}` is not available.
+| `"fail_call"` (default) | The error is returned as a denial's message is. |
+| `"lock_task"` | The task halts permanently, with `terminal_reason: restricted`. |
+| `"ignore"` | The step is skipped. Discouraged on an `assert`, which then lets through what it could not check; an implementation SHOULD warn of it. |
 
 ## CEL Context
 
-All middleware steps have access to:
-
 | Variable | Description |
 |---|---|
-| `context` / `c` | The task context — agent, user, capabilities, middleware, input, output |
-| `input` / `i` | The LLM-provided arguments for the triggering capability |
-| `output` / `o` | The capability result (only available in `after` steps) |
+| `context` / `c` | The task context |
+| `input` / `i` | Capability middleware: the LLM's arguments, as transformed. Guardrail `before`: the arriving input |
+| `output` / `o` | `after` steps only: the result, or the response, as transformed |
 | `now` | UTC ISO 8601 timestamp of the current time |
 | `c.cap` | Shorthand for `context.capabilities` |
 
@@ -121,19 +118,12 @@ See [Task Context](task-context.md) and [CEL Reference](../reference/cel.md) for
 
 ## Assertion Macros
 
-- **`review(user: str)`** — Requires the input or output to be reviewed by the specified user before proceeding. This is an asynchronous operation; the runtime MUST yield processing until the review completes.
-
-```yaml
-# Require the task owner to approve before a file is written
-- assert: review(context.user.id)
-  match: write_file
-  on_fail: block
-```
+- **`review(user: str)`** — Requires the input or output to be reviewed by the specified user before proceeding. The runtime MUST yield processing until the review completes.
 
 ## Validation Rules
 
-1. Exactly one of `assert`, `invoke`, `transform` must be set.
-2. `bindings` may only be set on `invoke` steps.
-3. `on_fail: "block"` MUST NOT be set on guardrail middleware steps.
-4. `transform` expressions must be valid CEL.
-5. `error_message` templates must contain valid `{expression}` interpolations.
+1. Exactly one of `assert`, `transform` must be set.
+2. `deny_message` may only be set on `assert` steps.
+3. `on_error` must be one of `fail_call`, `lock_task`, `ignore`.
+4. Expressions must be valid CEL, and every capability they call must be one the agent declares.
+5. `answer()` may only appear as described in [Answering Early](#answering-early).

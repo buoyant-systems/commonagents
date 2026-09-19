@@ -37,7 +37,7 @@ Interpolation roots available in tool specs:
 ## CEL Expressions
 
 Full CEL expressions are used in:
-- Middleware `assert`, `transform` fields
+- Middleware `assert` and `transform` fields
 - Middleware `condition` field (filter gate)
 - Capability `bindings` values
 - Agent `guardrails` steps
@@ -69,6 +69,15 @@ context.llm.tokens.total < 100000
 context.user.email != "" ? context.user.email : "unknown"
 ```
 
+### `last()`
+
+`list.last()` returns the list's last element, available in every CEL environment. An empty list is an evaluation error.
+
+```cel
+# Output from the latest invocation of a capability
+c.cap.zendesk.fetch_ticket.outputs.last()
+```
+
 ### `now` variable
 
 The `now` variable is a UTC ISO 8601 timestamp string available in all middleware and CEL tool expressions:
@@ -79,7 +88,7 @@ now   # e.g. "2026-05-20T03:45:00Z"
 
 ## Async Macros
 
-The runtime MUST support the following macros in middleware `assert`, `transform`, and `invoke` steps, and in CEL tool expressions:
+The runtime MUST support the following macros in middleware `assert` and `transform` steps, and in CEL tool expressions:
 
 ### `review(user: str)`
 
@@ -89,12 +98,10 @@ Pauses execution and requires the specified user to approve or deny the action. 
 # Require the task owner to review before a write capability executes
 - assert: review(context.user.id)
   match: write_file
-  on_fail: block
 
 # Require a specific admin to review high-risk operations
 - assert: review("admin@example.com")
   condition: "input.amount > 10000"
-  on_fail: lock_task
 ```
 
 ## Mount I/O Functions (CEL Tool Expressions Only)
@@ -154,22 +161,22 @@ post_attachment({"document": "workspace://reports/summary.pdf"})
 | `output` / `o` | ✅ (after) | ✅ (after) | | | |
 | `now` | ✅ | ✅ | ✅ | | |
 | `c.cap` | ✅ | ✅ | ✅ | ✅ | |
-| `review()` | ✅ | | ✅ | | |
+| `review()` | ✅ | ✅ | ✅ | | |
 | `mount.read()` | | | ✅ | | |
 | `mount.write()` | | | ✅ | | |
 | `mount.list()` | | | ✅ | | |
-| `<capability>()` | | | | | ✅ |
+| `<capability>()` | ✅ | ✅ | | | ✅ |
+| `answer()` | ✅ (before) | ✅ (before) | | | |
 
 `connection()` is absent from every column: it belongs to tool execution templates alone, and is not available in any of these environments.
 
-## Error Message Interpolation
+## Deny Message Interpolation
 
-`error_message` fields in middleware steps use `{expression}` interpolation (not raw CEL):
+`deny_message` fields on middleware `assert` steps use `{expression}` interpolation (not raw CEL):
 
 ```yaml
 - assert: "output.rows > 0"
-  error_message: "Query returned no results for filter: {input.filter}"
-  on_fail: block
+  deny_message: "Query returned no results for filter: {input.filter}"
 ```
 
 Available in `after` steps: `{output}` references the current tool result.

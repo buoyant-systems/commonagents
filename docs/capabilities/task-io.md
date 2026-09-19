@@ -16,16 +16,20 @@ A TaskIO serializes as a flat object with well-known keys plus dynamic keys:
 ```yaml
 message: list[ContentPart]   # the conversational content — see Content
 received_at: str | None      # UTC ISO 8601 — inputs only; when the input arrived
-committed_at: str            # UTC ISO 8601 — when this turn entered the conversation
+committed_at: str            # UTC ISO 8601 — when the task took this turn
+error: str | None            # why this turn was not taken as usual
 {dynamic_key}: any           # inputs: agent parameters · outputs: agent exposes
 ```
 
 1. `message` MUST be present on every TaskIO, carrying the conversational [content parts](./content.md).
-2. `committed_at` MUST be present on every TaskIO and MUST be the time the turn entered the conversation the model reads from.
+2. `committed_at` MUST be present on every TaskIO and MUST be the time the turn entered the conversation the model reads from — or, for an input a guardrail refused, the time it was refused.
 3. `received_at` MUST be present on every **input** and MUST be the time the runtime took delivery of it. It does not apply to an output, which the runtime produces rather than receives. The two instants are recorded separately because they are not the same moment — see Messages below.
-4. `message`, `received_at` and `committed_at` are well-known keys: an agent's `parameters` and `exposes` schemas MUST NOT supply them.
+4. `message`, `received_at`, `committed_at` and `error` are well-known keys: an agent's `parameters` and `exposes` schemas MUST NOT supply them.
 5. An **input** TaskIO additionally carries the parameter keys from the agent's `parameters` schema. Required parameters are always present; optional parameters are present if provided.
 6. An **output** TaskIO carries the keys from the agent's `exposes` schema. All declared `exposes` keys are always present.
+7. `error` is set on a turn a guardrail stopped, and says why ([Middleware](./middleware.md#denial)). A caller that delegated the turn receives an output carrying it as the call's error. The set of values is open, and a consumer MUST treat an unrecognised one as an error of unknown cause:
+    - `denied_by_input_guardrail` — on the input a guardrail refused, which MUST NOT be shown to the model, and on the output answering it, whose message is the denial.
+    - `denied_by_output_guardrail` — on an output that replaces the model's response, which a guardrail withheld.
 
 ## Where TaskIO Appears
 
@@ -47,10 +51,11 @@ type: input | output
 message: list[ContentPart]
 received_at: str            # inputs only — from the TaskIO
 committed_at: str | None    # from the TaskIO; absent on an input not yet committed
+error: str | None           # from the TaskIO
 {dynamic_key}: any
 ```
 
 1. `type` distinguishes input entries from output entries. It is the only field this projection adds — the instants are the turn's own, so the conversation is readable from the task object and a runtime MUST NOT require its event history to serve this list.
-2. `committed_at` is absent exactly when the input has arrived but has not been committed. Its absence is the **read receipt**: while it is absent the model has not been shown the message, and a consumer MUST NOT infer that it has been from the message's position.
+2. `committed_at` is absent exactly when the input has arrived but has not been committed. Its absence is the **read receipt**: while it is absent the model has not been shown the message, and a consumer MUST NOT infer that it has been from the message's position. An input with `error: denied_by_input_guardrail` was taken and never shown to the model.
 3. The list MUST be ordered by `committed_at`, with the inputs that have arrived but not yet been committed after it — they have no commit instant, and will commit later than everything that has one. A runtime MUST set `committed_at` on every turn it commits, which is what makes ordering by instant total.
 4. The ordering preserves the relative order of inputs and of outputs, but there is **no index correspondence between the two**. A turn commits every input queued at the moment it next calls the model, so one output MAY answer several inputs; and a turn whose execution is cancelled commits its input and produces no output at all. A consumer that needs to correlate a response with what prompted it MUST read `committed_at` — an output answers every input committed after the preceding output and no later than itself — and MUST NOT count by `type` or infer correlation from a message's position.

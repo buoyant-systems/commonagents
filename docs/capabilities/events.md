@@ -119,15 +119,20 @@ The pattern `!has(event) || <condition>` evaluates as:
 - During an action invocation: `true` (short-circuits — action is unaffected)
 - During an event activation: evaluates `<condition>` against the event payload
 
+A denial, or an error handled with `on_error: fail_call`, discards the event: nothing is committed to the task.
+
 ## Reshaping Event Input
 
-Use `after` middleware with `has(event)` to transform the input only for event-originated turns:
+The capability's `after` middleware runs once the event is formatted, before it is committed. There, `output` is the input the event produced — its `message` and parameters — and a [transform](middleware.md#transform) replaces it. Use `has(event)` to apply it only to event-originated turns:
 
 ```yaml
 capabilities:
   github_pr:
     after:
-      - transform: "has(event) ? '[ACTION REQUIRED] ' + input.message : input"
+      - transform: >-
+          has(event)
+            ? output.put('message', [{'mimeType': 'text/plain', 'text': '[ACTION REQUIRED]'}] + output.message)
+            : output
 ```
 
 ## Event Activation vs Task Creation
@@ -196,7 +201,7 @@ capabilities:
 guardrails:
   before:
     - assert: "size(context.input) > 0"
-      error_message: "Input cannot be empty."
+      deny_message: "Input cannot be empty."
 ```
 
 When this agent calls `create_pr`, the resolved `owner` and `repo` values (fixed by binding) are in the allow list from task start. `comment` and `review` events for `buoyant-systems/agent-mesh` arrive immediately. The `pr_merged` event is excluded by `include`. After 48 hours of task inactivity, event subscriptions expire.

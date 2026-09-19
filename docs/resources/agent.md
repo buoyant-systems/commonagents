@@ -89,7 +89,7 @@ exposes:
 
 ### Limits
 
-9. **`limits`** — When present, defines resource limits for tasks created from this agent. When a limit is exceeded, the runtime terminates the task with `terminal_reason: errored` (see [Task Lifecycle](../capabilities/task-context.md#termination)).
+9. **`limits`** — When present, defines resource limits for tasks created from this agent. A runtime MUST NOT continue a task past a limit. What it does instead is implementation-defined: terminating the task is one conforming answer, and holding it until something raises the limit is another. A consumer MUST therefore read `status.phase` for what actually happened, and MUST NOT treat reaching a limit as a terminal outcome in itself (see [Task Lifecycle](../capabilities/task-context.md#termination)).
     - `max_llm_turns` — maximum number of LLM turns.
     - `max_prompt_tokens` — cumulative prompt token limit across all LLM calls.
     - `max_completion_tokens` — cumulative completion token limit.
@@ -130,10 +130,10 @@ A **capability** is anything the LLM can invoke during a task, or that can send 
     ```
 
     - **`include`** — When present, only the named actions **and events** are active. Actions not in the list are hidden from the LLM; events not in the list are not subscribed. An explicit empty list `[]` hides all actions and subscribes to no events. No interpolation.
-    - **`bindings`** — Each value is a template whose `{...}` tokens are CEL expressions evaluated at invocation time. A value that is exactly one token delivers that expression's result with its type intact; one mixing literal text or several tokens composes a string. Available roots: `context`, `runtime`, `now`. Binding values populate `parameters.*` which the tool's event `receive.filter` expressions can reference to scope which events are routed to this agent. See [Bindings](../capabilities/bindings.md).
+    - **`bindings`** — Each value is a template whose `{...}` tokens are CEL expressions evaluated when the LLM calls the capability; a call made from middleware passes its own arguments. A value that is exactly one token delivers that expression's result with its type intact; one mixing literal text or several tokens composes a string. Available roots: `context`, `runtime`, `now`. Binding values populate `parameters.*` which the tool's event `receive.filter` expressions can reference to scope which events are routed to this agent. See [Bindings](../capabilities/bindings.md).
     - **`before_first`** — Middleware steps evaluated before the first invocation of this capability in a task only.
     - **`before`** — Middleware steps evaluated before every action invocation **and** before every incoming event activation. When evaluated for an event, the `event` variable is available in CEL scope. Use `!has(event) || <condition>` for assertions that should only apply to events. See [Events](../capabilities/events.md).
-    - **`after`** — Middleware steps evaluated after every action invocation, before the result is returned to the LLM. Also evaluated after each incoming event is formatted, before it is committed as input. Use `has(event)` to apply transforms only to event-originated turns.
+    - **`after`** — Middleware steps evaluated after every action invocation, before the result is returned to the LLM. Also evaluated after each incoming event is formatted, before it is committed as input; `output` is then the formatted input. Use `has(event)` to apply transforms only to event-originated turns.
 
     See [Middleware](../capabilities/middleware.md) for the full step specification.
 
@@ -209,12 +209,12 @@ capabilities:
     include: [create_pr, comment, review]   # expose create_pr action; subscribe to comment + review events
     before:
       - assert: "context.capabilities['github_pr'].count_successful < 20"
-        error_message: "Action limit reached for this session."
+        deny_message: "Action limit reached for this session."
       - assert: "!has(event) || event.author != 'agentmesh-bot'"
-        error_message: "Ignoring bot events."
+        deny_message: "Ignoring bot events."
 
 guardrails:
   before:
-    - assert: "size(input[0].message) < 50000"
-      error_message: "Input too large."
+    - assert: "size(input.message) < 50000"
+      deny_message: "Input too large."
 ```

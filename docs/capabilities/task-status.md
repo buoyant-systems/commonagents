@@ -20,7 +20,7 @@ responsible_user: str
 created_at: str             # UTC ISO 8601
 status:
     phase: idle | processing | terminal
-    terminal_reason: completed | errored | restricted | null
+    terminal_reason: completed | errored | restricted | abandoned | null
     revision: str           # opaque change cursor
     notifications: list[TaskNotification]
     idle_expires_at: str | null

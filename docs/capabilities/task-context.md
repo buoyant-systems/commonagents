@@ -30,8 +30,9 @@ When `phase` is `terminal`, `status.terminal_reason` explains why. It is one of:
 | `terminal_reason` | Meaning |
 |---|---|
 | `completed` | The task was finished by an explicit, positive action — never as a side effect of ordinary processing. A task that has simply delivered its output goes `idle`, not `terminal`. |
-| `errored` | The task halted on an unrecoverable error — an unreachable endpoint, an invalid configuration, or an exceeded resource limit (`max_llm_turns`, `max_prompt_tokens`, `max_completion_tokens`, `max_age`, `max_capability_uses`). A runtime records error detail internally; how much of it is exposed, and to whom, is implementation-defined. |
-| `restricted` | The task was permanently locked by a guardrail or middleware `lock_task` outcome. |
+| `errored` | The task halted on an unrecoverable error — an unreachable endpoint, an invalid configuration, or, where the implementation ends a task at a resource limit rather than holding it, an exhausted limit. A runtime records error detail internally; how much of it is exposed, and to whom, is implementation-defined. |
+| `restricted` | The task was permanently locked by a middleware step's `on_error: lock_task`. |
+| `abandoned` | The task was waiting for something only a person could supply — an approval, an authorisation, a credential, more budget — and nobody supplied it before the task's idle lifespan elapsed. Neither a failure of the work nor a completion of it: nothing went wrong, and nothing was finished. |
 
 `terminal_reason` MUST be `null` for any non-terminal task.
 
@@ -98,7 +99,7 @@ context.input[0].project_name
 
 ## Capability Keys
 
-Capabilities are keyed by their **name** — what an agent's author writes to reach one, here and in a middleware `invoke`. A name is the resource, an optional qualifer, and (for a tool) the action, joined with dots:
+Capabilities are keyed by their **name** — what an agent's author writes to reach one, here and in a middleware call. A name is the resource, an optional qualifer, and (for a tool) the action, joined with dots:
 
 | | name | depth |
 |---|---|---|
@@ -123,6 +124,8 @@ Writing the scheme when it is not needed gives you a name that cannot move later
 ### Reading a record
 
 This object is **nested on the name**: `context.capabilities.github_file.read_chunk.outputs`, `context.capabilities.research_agent.task_ids`. The nesting is the name, so an author who can write a capability can read its record.
+
+A record's arrays are in invocation order and aligned: index 0 is the first invocation, and the last element is the latest.
 
 `agent://` cannot appear in a CEL path, so a delegation whose name carries it is read by its whole name as a key: `context.capabilities["agent://fetcher"]`.
 
@@ -158,8 +161,11 @@ context.output[0].message[0].text
 # Whether a capability succeeded at least once
 context.capabilities.github_file.read_chunk.count_successful > 0
 
-# Output from the most recent invocation of a capability
+# Output from the first invocation of a capability
 context.capabilities.zendesk.fetch_ticket.outputs[0]
+
+# Output from the latest invocation
+c.cap.zendesk.fetch_ticket.outputs.last()
 
 # Total token usage
 context.llm.tokens.total
